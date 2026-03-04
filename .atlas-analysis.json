@@ -1,0 +1,137 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Chaos Mesh",
+  "projectDescription": "A cloud-native Chaos Engineering platform that orchestrates chaos experiments on Kubernetes environments.",
+  "theme": "aspen",
+  "primaryColor": "#149df3",
+  "lightColor": "#152d74",
+  "darkColor": "#e95a7b",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/components",
+              "concepts/chaos-types-overview",
+              "concepts/selectors"
+            ]
+          },
+          {
+            "group": "Chaos Experiments",
+            "pages": [
+              "chaos/podchaos",
+              "chaos/networkchaos",
+              "chaos/iochaos",
+              "chaos/stresschaos",
+              "chaos/timechaos",
+              "chaos/kernelchaos",
+              "chaos/httpchaos",
+              "chaos/dnschaos",
+              "chaos/jvmchaos",
+              "chaos/blockchaos",
+              "chaos/awschaos",
+              "chaos/gcpchaos",
+              "chaos/azurechaos",
+              "chaos/physicalmachinechaos"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/workflows",
+              "operations/scheduling",
+              "operations/dashboard",
+              "operations/monitoring",
+              "operations/status-check"
+            ]
+          },
+          {
+            "group": "Security",
+            "pages": [
+              "security/authorization",
+              "security/rbac",
+              "security/best-practices"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/developer-guide",
+              "development/contributing",
+              "development/build-system"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "CRD API",
+            "pages": [
+              "api/overview",
+              "api/common-types",
+              "api/podchaos-api",
+              "api/networkchaos-api",
+              "api/iochaos-api",
+              "api/stresschaos-api",
+              "api/timechaos-api"
+            ]
+          },
+          {
+            "group": "gRPC API",
+            "pages": [
+              "api/grpc-overview",
+              "api/chaosdaemon-api"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multiple chaos experiment types (Pod, Network, IO, Stress, Time, Kernel, HTTP, DNS, JVM, Block, Cloud)",
+    "Kubernetes-native with CRD-based architecture",
+    "Web-based Dashboard for experiment management and monitoring",
+    "Workflow orchestration for complex chaos scenarios",
+    "Scheduled chaos experiments with cron-like scheduling",
+    "Multi-cluster support for distributed chaos testing",
+    "Status check integration for experiment validation",
+    "Physical machine chaos injection support",
+    "Fine-grained selector-based targeting",
+    "Privileged DaemonSet for low-level system interference"
+  ],
+  "publicApiSurface": [
+    "PodChaos CRD - Pod lifecycle fault injection",
+    "NetworkChaos CRD - Network fault injection (delay, loss, corrupt, duplicate, partition)",
+    "IOChaos CRD - I/O fault injection (delay, errno, attributes)",
+    "StressChaos CRD - CPU and memory stress testing",
+    "TimeChaos CRD - Clock skew simulation",
+    "KernelChaos CRD - Kernel fault injection",
+    "HTTPChaos CRD - HTTP request/response manipulation",
+    "DNSChaos CRD - DNS fault injection",
+    "JVMChaos CRD - JVM fault injection",
+    "BlockChaos CRD - Block device fault injection",
+    "AWSChaos CRD - AWS fault injection",
+    "GCPChaos CRD - GCP fault injection",
+    "AzureChaos CRD - Azure fault injection",
+    "PhysicalMachineChaos CRD - Physical machine fault injection",
+    "Workflow CRD - Orchestrate complex chaos scenarios",
+    "Schedule CRD - Schedule chaos experiments",
+    "StatusCheck CRD - Validate experiment outcomes",
+    "Chaos Dashboard UI - Web interface for experiment management",
+    "chaos-daemon gRPC API - Low-level chaos injection interface"
+  ]
+}
