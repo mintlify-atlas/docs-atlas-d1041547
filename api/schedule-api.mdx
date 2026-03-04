@@ -1,0 +1,213 @@
+---
+title: Schedule API
+description: API reference for Schedule CRD
+---
+
+`Schedule` allows you to run chaos experiments on a schedule using cron expressions.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the Schedule resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the Schedule resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="ScheduleSpec" required>
+  Defines the behavior of the scheduled chaos.
+</ParamField>
+
+### ScheduleSpec
+
+<ParamField path="schedule" type="string" required>
+  Cron expression defining when to run the chaos experiment.
+  
+  Supports standard cron format with optional seconds field:
+  - `[Second] Minute Hour DayOfMonth Month DayOfWeek`
+  
+  **Examples:**
+  ```yaml
+  schedule: "0 */5 * * * *"    # Every 5 minutes
+  schedule: "0 0 0 * * *"      # Daily at midnight
+  schedule: "0 30 9 * * 1-5"   # Weekdays at 9:30 AM
+  ```
+</ParamField>
+
+<ParamField path="startingDeadlineSeconds" type="*int64">
+  Deadline in seconds for starting the chaos if it misses the scheduled time.
+  
+  **Minimum:** `0` (exclusive)
+  
+  ```yaml
+  startingDeadlineSeconds: 300  # 5 minutes
+  ```
+</ParamField>
+
+<ParamField path="concurrencyPolicy" type="ConcurrencyPolicy" default="Forbid">
+  How to treat concurrent executions of a chaos experiment.
+  
+  **Enum values:**
+  - `Forbid` - Do not allow concurrent runs (default)
+  - `Allow` - Allow concurrent runs
+  
+  ```yaml
+  concurrencyPolicy: Forbid
+  ```
+</ParamField>
+
+<ParamField path="historyLimit" type="int" default="1">
+  Number of finished chaos experiments to retain for history.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  historyLimit: 5
+  ```
+</ParamField>
+
+<ParamField path="type" type="ScheduleTemplateType" required>
+  Type of chaos to schedule.
+  
+  Common values include:
+  - `PodChaos`
+  - `NetworkChaos`
+  - `StressChaos`
+  - `IOChaos`
+  - `TimeChaos`
+  - `KernelChaos`
+  - `HTTPChaos`
+  - `DNSChaos`
+  - `JVMChaos`
+  - `BlockChaos`
+  - `AWSChaos`
+  - `GCPChaos`
+  - `AzureChaos`
+  - `PhysicalMachineChaos`
+  
+  **Note:** Cannot schedule `Workflow` type (nested workflows not supported).
+</ParamField>
+
+<ParamField path="ScheduleItem" type="ScheduleItem" required>
+  Embedded chaos specification (inline). The actual chaos spec depends on the `type` field.
+  
+  For example, if `type: PodChaos`, include `podChaos` spec inline.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="ScheduleStatus">
+  Most recently observed status of the schedule.
+</ResponseField>
+
+### ScheduleStatus
+
+<ResponseField name="active" type="[]corev1.ObjectReference">
+  List of currently running chaos experiments created by this schedule.
+</ResponseField>
+
+<ResponseField name="time" type="metav1.Time">
+  Last time the schedule successfully created a chaos experiment.
+</ResponseField>
+
+## Pausing a Schedule
+
+To pause a schedule, add the annotation:
+
+```yaml
+metadata:
+  annotations:
+    experiment.chaos-mesh.org/pause: "true"
+```
+
+## Examples
+
+### Schedule PodChaos Daily
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: schedule-pod-kill
+  namespace: chaos-mesh
+spec:
+  schedule: "0 0 2 * * *"  # 2 AM daily
+  type: PodChaos
+  historyLimit: 3
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: nginx
+```
+
+### Schedule NetworkChaos Every Hour
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: schedule-network-delay
+  namespace: chaos-mesh
+spec:
+  schedule: "0 0 * * * *"  # Every hour
+  type: NetworkChaos
+  historyLimit: 5
+  concurrencyPolicy: Allow
+  startingDeadlineSeconds: 600
+  networkChaos:
+    action: delay
+    mode: all
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        tier: backend
+    delay:
+      latency: "100ms"
+      correlation: "50"
+    duration: "30s"
+```
+
+### Schedule StressChaos on Weekdays
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: schedule-cpu-stress
+  namespace: chaos-mesh
+spec:
+  schedule: "0 30 14 * * 1-5"  # Weekdays at 2:30 PM
+  type: StressChaos
+  historyLimit: 2
+  concurrencyPolicy: Forbid
+  stressChaos:
+    mode: one
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: worker
+    stressors:
+      cpu:
+        workers: 2
+        load: 80
+    duration: "5m"
+```

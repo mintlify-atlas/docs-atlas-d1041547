@@ -1,0 +1,168 @@
+---
+title: AzureChaos API
+description: API reference for AzureChaos CRD
+---
+
+`AzureChaos` allows you to inject faults into Azure services, including stopping virtual machines, restarting VMs, and detaching disks.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the AzureChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the AzureChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="AzureChaosSpec" required>
+  Defines the behavior of the Azure chaos experiment.
+</ParamField>
+
+### AzureChaosSpec
+
+<ParamField path="action" type="AzureChaosAction" required>
+  Specific Azure chaos action to perform.
+  
+  **Enum values:**
+  - `vm-stop` - Stop a virtual machine
+  - `vm-restart` - Restart a virtual machine (one-shot)
+  - `disk-detach` - Detach a disk from a virtual machine
+  
+  **Default:** `vm-stop`
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="subscriptionID" type="string" required>
+  ID of the Azure subscription.
+  
+  Part of `AzureSelector` (inline).
+  
+  ```yaml
+  subscriptionID: "12345678-1234-1234-1234-123456789012"
+  ```
+</ParamField>
+
+<ParamField path="resourceGroupName" type="string" required>
+  Name of the resource group.
+  
+  Part of `AzureSelector` (inline).
+  
+  ```yaml
+  resourceGroupName: "my-resource-group"
+  ```
+</ParamField>
+
+<ParamField path="vmName" type="string" required>
+  Name of the virtual machine.
+  
+  Part of `AzureSelector` (inline).
+  
+  ```yaml
+  vmName: "my-vm"
+  ```
+</ParamField>
+
+<ParamField path="diskName" type="*string">
+  Name of the disk. Required when action is `disk-detach`.
+  
+  Part of `AzureSelector` (inline).
+  
+  ```yaml
+  diskName: "my-data-disk"
+  ```
+</ParamField>
+
+<ParamField path="lun" type="*int">
+  Logical Unit Number of the data disk. Required when action is `disk-detach`.
+  
+  Part of `AzureSelector` (inline).
+  
+  ```yaml
+  lun: 0
+  ```
+</ParamField>
+
+<ParamField path="secretName" type="*string">
+  Name of Kubernetes secret containing Azure credentials.
+  
+  Part of `AzureSelector` (inline).
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+  
+  Part of `AzureSelector` (inline).
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="AzureChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### AzureChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Examples
+
+### Stop Virtual Machine
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+metadata:
+  name: vm-stop
+  namespace: chaos-mesh
+spec:
+  action: vm-stop
+  secretName: azure-credentials
+  subscriptionID: 12345678-1234-1234-1234-123456789012
+  resourceGroupName: my-resource-group
+  vmName: my-vm
+  duration: 5m
+```
+
+### Detach Disk
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+metadata:
+  name: disk-detach
+  namespace: chaos-mesh
+spec:
+  action: disk-detach
+  secretName: azure-credentials
+  subscriptionID: 12345678-1234-1234-1234-123456789012
+  resourceGroupName: prod-resources
+  vmName: database-vm
+  diskName: data-disk-1
+  lun: 0
+  duration: 3m
+```

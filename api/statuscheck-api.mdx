@@ -1,0 +1,343 @@
+---
+title: StatusCheck API
+description: API reference for StatusCheck CRD
+---
+
+`StatusCheck` allows you to check the health and status of services continuously or synchronously, typically used within workflows to verify system state.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the StatusCheck resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the StatusCheck resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="StatusCheckSpec" required>
+  Defines the behavior of the status check.
+</ParamField>
+
+### StatusCheckSpec
+
+<ParamField path="mode" type="StatusCheckMode" default="Synchronous">
+  Execution mode of the status check.
+  
+  **Enum values:**
+  - `Synchronous` - Exit immediately after success or failure
+  - `Continuous` - Continue until duration exceeded or failure threshold exceeded
+  
+  ```yaml
+  mode: Continuous
+  ```
+</ParamField>
+
+<ParamField path="type" type="StatusCheckType" default="HTTP">
+  Type of status check to perform.
+  
+  **Enum values:**
+  - `HTTP` - HTTP endpoint health check
+  
+  Currently only HTTP is supported.
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the status check if failure threshold is not exceeded.
+  
+  Available in both `Synchronous` and `Continuous` modes.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+  
+  ```yaml
+  duration: "5m"
+  ```
+</ParamField>
+
+<ParamField path="timeoutSeconds" type="int" default="1">
+  Number of seconds after which a status check execution times out.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  timeoutSeconds: 5
+  ```
+</ParamField>
+
+<ParamField path="intervalSeconds" type="int" default="10">
+  How often (in seconds) to perform a status check execution.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  intervalSeconds: 30
+  ```
+</ParamField>
+
+<ParamField path="failureThreshold" type="int" default="3">
+  Minimum consecutive failures for the status check to be considered failed.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  failureThreshold: 5
+  ```
+</ParamField>
+
+<ParamField path="successThreshold" type="int" default="1">
+  Minimum consecutive successes for the status check to be considered successful.
+  
+  Only works for `Synchronous` mode.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  successThreshold: 3
+  ```
+</ParamField>
+
+<ParamField path="recordsHistoryLimit" type="int" default="100">
+  Number of status check records to retain in history.
+  
+  **Minimum:** `1`
+  
+  **Maximum:** `1000`
+  
+  ```yaml
+  recordsHistoryLimit: 200
+  ```
+</ParamField>
+
+<ParamField path="http" type="*HTTPStatusCheck">
+  HTTP status check configuration. Used when type is `HTTP`.
+</ParamField>
+
+### HTTPStatusCheck
+
+<ParamField path="url" type="string" required>
+  HTTP endpoint URL to check.
+  
+  ```yaml
+  url: "http://my-service:8080/health"
+  ```
+</ParamField>
+
+<ParamField path="method" type="HTTPRequestMethod" default="GET">
+  HTTP request method.
+  
+  **Enum values:**
+  - `GET`
+  - `POST`
+  
+  ```yaml
+  method: GET
+  ```
+</ParamField>
+
+<ParamField path="headers" type="http.Header">
+  HTTP request headers.
+  
+  ```yaml
+  headers:
+    Content-Type:
+      - "application/json"
+    Authorization:
+      - "Bearer token123"
+  ```
+</ParamField>
+
+<ParamField path="body" type="string">
+  HTTP request body (for POST requests).
+  
+  ```yaml
+  body: '{"key": "value"}'
+  ```
+</ParamField>
+
+<ParamField path="criteria" type="HTTPCriteria" required>
+  Criteria to determine the result of the status check.
+</ParamField>
+
+### HTTPCriteria
+
+<ParamField path="statusCode" type="string" required>
+  Expected HTTP status code(s).
+  
+  Can be:
+  - Single code: `"200"`
+  - Inclusive range: `"200-400"` (both 200 and 400 are included)
+  
+  ```yaml
+  statusCode: "200"
+  ```
+  
+  or
+  
+  ```yaml
+  statusCode: "200-299"
+  ```
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="StatusCheckStatus">
+  Most recently observed status of the status check.
+</ResponseField>
+
+### StatusCheckStatus
+
+<ResponseField name="startTime" type="*metav1.Time">
+  Time when the status check started execution.
+</ResponseField>
+
+<ResponseField name="completionTime" type="*metav1.Time">
+  Time when the status check was completed.
+</ResponseField>
+
+<ResponseField name="count" type="int64">
+  Total number of status check executions.
+</ResponseField>
+
+<ResponseField name="conditions" type="[]StatusCheckCondition">
+  Latest available observations of the StatusCheck's current state.
+</ResponseField>
+
+<Expandable title="StatusCheckCondition">
+  <ResponseField name="type" type="StatusCheckConditionType">
+    Type of condition.
+    
+    Values:
+    - `Completed` - Status check is completed
+    - `DurationExceed` - Duration is exceeded
+    - `FailureThresholdExceed` - Failure threshold is exceeded
+    - `SuccessThresholdExceed` - Success threshold is exceeded
+  </ResponseField>
+  
+  <ResponseField name="status" type="corev1.ConditionStatus">
+    Status of the condition: `True`, `False`, or `Unknown`.
+  </ResponseField>
+  
+  <ResponseField name="reason" type="StatusCheckReason">
+    Reason for the condition.
+    
+    Values:
+    - `StatusCheckDurationExceed`
+    - `StatusCheckFailureThresholdExceed`
+    - `StatusCheckSuccessThresholdExceed`
+    - `StatusCheckExecutionFailed`
+    - `StatusCheckExecutionSucceed`
+  </ResponseField>
+  
+  <ResponseField name="lastProbeTime" type="*metav1.Time">
+    Last time the condition was probed.
+  </ResponseField>
+  
+  <ResponseField name="lastTransitionTime" type="*metav1.Time">
+    Last time the condition transitioned from one status to another.
+  </ResponseField>
+</Expandable>
+
+<ResponseField name="records" type="[]StatusCheckRecord">
+  History of status check execution records.
+</ResponseField>
+
+<Expandable title="StatusCheckRecord">
+  <ResponseField name="startTime" type="*metav1.Time">
+    Time when this check execution started.
+  </ResponseField>
+  
+  <ResponseField name="outcome" type="StatusCheckOutcome">
+    Result of the check.
+    
+    Values: `Success`, `Failure`
+  </ResponseField>
+</Expandable>
+
+## Examples
+
+### Synchronous HTTP Check
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+metadata:
+  name: http-check-sync
+  namespace: chaos-mesh
+spec:
+  mode: Synchronous
+  type: HTTP
+  timeoutSeconds: 5
+  intervalSeconds: 10
+  successThreshold: 3
+  failureThreshold: 3
+  http:
+    url: http://my-service.default.svc.cluster.local:8080/health
+    method: GET
+    criteria:
+      statusCode: "200"
+```
+
+### Continuous HTTP Check
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+metadata:
+  name: http-check-continuous
+  namespace: chaos-mesh
+spec:
+  mode: Continuous
+  type: HTTP
+  duration: "5m"
+  timeoutSeconds: 3
+  intervalSeconds: 15
+  failureThreshold: 5
+  recordsHistoryLimit: 200
+  http:
+    url: http://api-gateway:8080/api/health
+    method: GET
+    headers:
+      Authorization:
+        - "Bearer secret-token"
+    criteria:
+      statusCode: "200-299"
+```
+
+### HTTP POST Check with Body
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+metadata:
+  name: http-post-check
+  namespace: chaos-mesh
+spec:
+  mode: Synchronous
+  type: HTTP
+  timeoutSeconds: 10
+  intervalSeconds: 20
+  successThreshold: 1
+  failureThreshold: 3
+  http:
+    url: http://webhook-service:9000/validate
+    method: POST
+    headers:
+      Content-Type:
+        - "application/json"
+    body: '{"status": "check"}'
+    criteria:
+      statusCode: "200"
+```

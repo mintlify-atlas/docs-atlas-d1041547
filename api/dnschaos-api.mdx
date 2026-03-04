@@ -1,0 +1,124 @@
+---
+title: DNSChaos API
+description: API reference for DNSChaos CRD
+---
+
+`DNSChaos` allows you to inject DNS faults, including returning errors or random IP addresses for DNS queries.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the DNSChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the DNSChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="DNSChaosSpec" required>
+  Defines the behavior of the DNS chaos experiment.
+</ParamField>
+
+### DNSChaosSpec
+
+<ParamField path="action" type="DNSChaosAction" required>
+  Specific DNS chaos action to perform.
+  
+  **Enum values:**
+  - `error` - Return an error when sending DNS request
+  - `random` - Return a random IP address when sending DNS request
+  
+  **Default:** `error`
+</ParamField>
+
+<ParamField path="selector" type="ContainerSelector" required>
+  Selector for targeting containers. See [ContainerSelector in Common Types](/api/common-types#containerselector).
+  
+  Inherits all fields from `ContainerSelector` (inline), including:
+  - Pod selection criteria
+  - Mode (one/all/fixed/fixed-percent/random-max-percent)
+  - Value (for fixed modes)
+  - Container names
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="patterns" type="[]string">
+  Domain name patterns to affect. Supports placeholder `?` and wildcard `*`.
+  
+  **Notes:**
+  - The wildcard `*` must be at the end of the string. For example, `chaos-*.org` is invalid.
+  - If patterns is empty, will affect all domain names.
+  
+  **Example:**
+  ```yaml
+  patterns:
+    - "google.com"
+    - "github.*"
+    - "chaos-mes?.org"
+  ```
+  
+  This will affect:
+  - `google.com` (exact match)
+  - `github.com`, `github.io` (wildcard match)
+  - `chaos-mesh.org` (placeholder match)
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="DNSChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### DNSChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-error
+  namespace: chaos-mesh
+spec:
+  action: error
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: web
+  patterns:
+    - "google.com"
+    - "*.github.com"
+  duration: "5m"
+```

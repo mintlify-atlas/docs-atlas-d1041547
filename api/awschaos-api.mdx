@@ -1,0 +1,160 @@
+---
+title: AWSChaos API
+description: API reference for AWSChaos CRD
+---
+
+`AWSChaos` allows you to inject faults into AWS services, including stopping EC2 instances, restarting instances, and detaching EBS volumes.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the AWSChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the AWSChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="AWSChaosSpec" required>
+  Defines the behavior of the AWS chaos experiment.
+</ParamField>
+
+### AWSChaosSpec
+
+<ParamField path="action" type="AWSChaosAction" required>
+  Specific AWS chaos action to perform.
+  
+  **Enum values:**
+  - `ec2-stop` - Stop an EC2 instance
+  - `ec2-restart` - Restart an EC2 instance (one-shot)
+  - `detach-volume` - Detach an EBS volume from an EC2 instance
+  
+  **Default:** `ec2-stop`
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="secretName" type="*string">
+  Name of Kubernetes secret containing AWS credentials.
+  
+  The secret should contain `aws_access_key_id` and `aws_secret_access_key` keys.
+</ParamField>
+
+<ParamField path="awsRegion" type="string" required>
+  AWS region where the target resources are located.
+  
+  Part of `AWSSelector` (inline).
+  
+  ```yaml
+  awsRegion: "us-west-2"
+  ```
+</ParamField>
+
+<ParamField path="ec2Instance" type="string" required>
+  ID of the EC2 instance to target.
+  
+  Part of `AWSSelector` (inline).
+  
+  ```yaml
+  ec2Instance: "i-1234567890abcdef0"
+  ```
+</ParamField>
+
+<ParamField path="volumeID" type="*string">
+  ID of the EBS volume. Required when action is `detach-volume`.
+  
+  Part of `AWSSelector` (inline).
+  
+  ```yaml
+  volumeID: "vol-0123456789abcdef0"
+  ```
+</ParamField>
+
+<ParamField path="deviceName" type="*string">
+  Name of the device. Required when action is `detach-volume`.
+  
+  Part of `AWSSelector` (inline).
+  
+  ```yaml
+  deviceName: "/dev/sdf"
+  ```
+</ParamField>
+
+<ParamField path="endpoint" type="*string">
+  Endpoint of the AWS server. Used for testing only.
+  
+  Part of `AWSSelector` (inline).
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="AWSChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### AWSChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Examples
+
+### Stop EC2 Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+metadata:
+  name: ec2-stop
+  namespace: chaos-mesh
+spec:
+  action: ec2-stop
+  secretName: aws-credentials
+  awsRegion: us-west-2
+  ec2Instance: i-1234567890abcdef0
+  duration: 5m
+```
+
+### Detach EBS Volume
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+metadata:
+  name: volume-detach
+  namespace: chaos-mesh
+spec:
+  action: detach-volume
+  secretName: aws-credentials
+  awsRegion: us-east-1
+  ec2Instance: i-0987654321fedcba0
+  volumeID: vol-0123456789abcdef0
+  deviceName: /dev/sdf
+  duration: 3m
+```

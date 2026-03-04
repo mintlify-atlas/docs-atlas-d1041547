@@ -1,0 +1,242 @@
+---
+title: Workflow API
+description: API reference for Workflow CRD
+---
+
+`Workflow` allows you to orchestrate multiple chaos experiments and tasks in a directed acyclic graph (DAG) with serial or parallel execution.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the Workflow resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the Workflow resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="WorkflowSpec" required>
+  Defines the behavior of the workflow.
+</ParamField>
+
+### WorkflowSpec
+
+<ParamField path="entry" type="string" required>
+  Name of the entry template to start the workflow.
+  
+  ```yaml
+  entry: "entry-template"
+  ```
+</ParamField>
+
+<ParamField path="templates" type="[]Template" required>
+  List of templates that define the workflow steps.
+</ParamField>
+
+### Template
+
+<ParamField path="name" type="string" required>
+  Name of the template. Must be unique within the workflow.
+</ParamField>
+
+<ParamField path="templateType" type="TemplateType" required>
+  Type of the template.
+  
+  Common values include:
+  - Chaos types: `PodChaos`, `NetworkChaos`, `StressChaos`, `IOChaos`, `TimeChaos`, `KernelChaos`, `HTTPChaos`, `DNSChaos`, `JVMChaos`, `AWSChaos`, `GCPChaos`, `AzureChaos`, etc.
+  - Orchestration: `Serial`, `Parallel`
+  - Other: `Task`, `Schedule`, `StatusCheck`
+</ParamField>
+
+<ParamField path="deadline" type="*string">
+  Deadline for the template execution.
+  
+  ```yaml
+  deadline: "5m"
+  ```
+</ParamField>
+
+<ParamField path="children" type="[]string">
+  List of child template names. Only used when type is `Serial` or `Parallel`.
+  
+  ```yaml
+  children:
+    - "step-1"
+    - "step-2"
+  ```
+</ParamField>
+
+<ParamField path="task" type="*Task">
+  Task definition. Only used when type is `Task`.
+</ParamField>
+
+<Expandable title="Task">
+  <ParamField path="container" type="*corev1.Container">
+    Main container image to run in the pod.
+  </ParamField>
+  
+  <ParamField path="volumes" type="[]corev1.Volume">
+    List of volumes that can be mounted by containers.
+  </ParamField>
+  
+  <ParamField path="labels" type="map[string]string">
+    Labels to apply to the task pod.
+  </ParamField>
+</Expandable>
+
+<ParamField path="conditionalBranches" type="[]ConditionalBranch">
+  Conditional branches for custom tasks. Only used when type is `Task`.
+</ParamField>
+
+<ParamField path="schedule" type="*ChaosOnlyScheduleSpec">
+  Schedule configuration. Only used when type is `Schedule`.
+</ParamField>
+
+<Expandable title="ChaosOnlyScheduleSpec">
+  <ParamField path="schedule" type="string" required>
+    Cron expression for scheduling.
+    
+    ```yaml
+    schedule: "0 0 * * *"  # Daily at midnight
+    ```
+  </ParamField>
+  
+  <ParamField path="startingDeadlineSeconds" type="*int64">
+    Deadline in seconds for starting the job if it misses scheduled time.
+    
+    **Minimum:** `0`
+  </ParamField>
+  
+  <ParamField path="concurrencyPolicy" type="ConcurrencyPolicy">
+    How to treat concurrent executions.
+    
+    **Enum values:** `Forbid`, `Allow`
+  </ParamField>
+  
+  <ParamField path="historyLimit" type="int" default="1">
+    Number of finished jobs to retain.
+    
+    **Minimum:** `1`
+  </ParamField>
+  
+  <ParamField path="type" type="ScheduleTemplateType" required>
+    Type of scheduled chaos.
+  </ParamField>
+</Expandable>
+
+<ParamField path="statusCheck" type="*StatusCheckSpec">
+  Status check configuration. Only used when type is `StatusCheck`.
+  
+  See [StatusCheck API](/api/statuscheck-api) for details.
+</ParamField>
+
+<ParamField path="abortWithStatusCheck" type="bool" default="false">
+  Whether to abort the workflow when the failure threshold of StatusCheck is exceeded. Only used when type is `StatusCheck`.
+</ParamField>
+
+<ParamField path="EmbedChaos" type="*EmbedChaos">
+  Embedded chaos specification. Only used when type is a chaos type.
+  
+  Contains the spec for the specific chaos type (inline).
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="WorkflowStatus">
+  Most recently observed status of the workflow.
+</ResponseField>
+
+### WorkflowStatus
+
+<ResponseField name="entryNode" type="*string">
+  Name of the entry node.
+</ResponseField>
+
+<ResponseField name="startTime" type="*metav1.Time">
+  Time when the workflow started.
+</ResponseField>
+
+<ResponseField name="endTime" type="*metav1.Time">
+  Time when the workflow ended.
+</ResponseField>
+
+<ResponseField name="conditions" type="[]WorkflowCondition">
+  Latest available observations of the workflow's current state.
+</ResponseField>
+
+<Expandable title="WorkflowCondition">
+  <ResponseField name="type" type="WorkflowConditionType">
+    Type of condition.
+    
+    Values: `Accomplished`, `Scheduled`
+  </ResponseField>
+  
+  <ResponseField name="status" type="corev1.ConditionStatus">
+    Status of the condition: `True`, `False`, or `Unknown`.
+  </ResponseField>
+  
+  <ResponseField name="reason" type="string">
+    Reason for the condition's last transition.
+  </ResponseField>
+  
+  <ResponseField name="startTime" type="*metav1.Time">
+    Time when the condition started.
+  </ResponseField>
+</Expandable>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: chaos-workflow
+  namespace: chaos-mesh
+spec:
+  entry: entry
+  templates:
+    - name: entry
+      templateType: Serial
+      deadline: 30m
+      children:
+        - pod-chaos
+        - network-chaos
+    
+    - name: pod-chaos
+      templateType: PodChaos
+      deadline: 5m
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          namespaces:
+            - default
+          labelSelectors:
+            app: nginx
+    
+    - name: network-chaos
+      templateType: NetworkChaos
+      deadline: 10m
+      networkChaos:
+        action: delay
+        mode: all
+        selector:
+          namespaces:
+            - default
+          labelSelectors:
+            app: web
+        delay:
+          latency: "100ms"
+        duration: "5m"
+```

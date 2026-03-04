@@ -1,0 +1,169 @@
+---
+title: KernelChaos API
+description: API reference for KernelChaos CRD
+---
+
+`KernelChaos` allows you to inject faults into the Linux kernel to simulate kernel-level failures such as memory allocation failures, page allocation failures, and bio failures.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the KernelChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the KernelChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="KernelChaosSpec" required>
+  Defines the behavior of the kernel chaos experiment.
+</ParamField>
+
+### KernelChaosSpec
+
+<ParamField path="selector" type="ContainerSelector" required>
+  Selector for targeting containers. See [ContainerSelector in Common Types](/api/common-types#containerselector).
+  
+  Inherits all fields from `ContainerSelector` (inline), including:
+  - Pod selection criteria
+  - Mode (one/all/fixed/fixed-percent/random-max-percent)
+  - Value (for fixed modes)
+  - Container names
+</ParamField>
+
+<ParamField path="failKernRequest" type="FailKernRequest" required>
+  Defines the kernel injection conditions.
+</ParamField>
+
+<Expandable title="FailKernRequest">
+  <ParamField path="failtype" type="int32" required>
+    Indicates what to fail. Valid values:
+    - `0` - slab allocation (should_failslab)
+    - `1` - page allocation (should_fail_alloc_page)
+    - `2` - bio (should_fail_bio)
+    
+    **Minimum:** `0`
+    
+    **Maximum:** `2`
+    
+    Learn more at:
+    - [Linux Kernel Fault Injection](https://www.kernel.org/doc/html/latest/fault-injection/fault-injection.html)
+    - [BCC inject examples](http://github.com/iovisor/bcc/blob/master/tools/inject_example.txt)
+  </ParamField>
+  
+  <ParamField path="headers" type="[]string">
+    Kernel headers you need. For example: `["linux/mmzone.h", "linux/blkdev.h"]`
+  </ParamField>
+  
+  <ParamField path="callchain" type="[]Frame">
+    Special call chain to target, such as:
+    ```
+    ext4_mount
+      -> mount_subtree
+         -> ...
+            -> should_failslab
+    ```
+    
+    Can include predicates and parameters. If empty, will fail at any call chain with slab alloc (e.g., kmalloc).
+    
+    See [bpfki examples](https://github.com/chaos-mesh/bpfki/tree/develop/examples) for more details.
+  </ParamField>
+  
+  <ParamField path="probability" type="uint32" default="0">
+    Probability of failure (0-100). For example, set to `1` for 1% failure rate.
+    
+    **Minimum:** `0`
+    
+    **Maximum:** `100`
+  </ParamField>
+  
+  <ParamField path="times" type="uint32" default="0">
+    Maximum number of times to inject the failure.
+    
+    **Minimum:** `0`
+  </ParamField>
+</Expandable>
+
+<Expandable title="Frame">
+  <ParamField path="funcname" type="string">
+    Function name from kernel source or `/proc/kallsyms`, such as `ext4_mount`.
+  </ParamField>
+  
+  <ParamField path="parameters" type="string">
+    Used with predicate. For example, to inject slab error in `d_alloc_parallel(struct dentry *parent, const struct qstr *name)` with a special name "bananas", set to:
+    ```
+    struct dentry *parent, const struct qstr *name
+    ```
+  </ParamField>
+  
+  <ParamField path="predicate" type="string">
+    Predicate to access frame arguments. Following the parameters example above, set to:
+    ```
+    STRNCMP(name->name, "bananas", 8)
+    ```
+    This makes injection only occur for this specific condition.
+  </ParamField>
+</Expandable>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="KernelChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### KernelChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: kernel-slab-error
+  namespace: chaos-mesh
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: nginx
+  failKernRequest:
+    failtype: 0
+    headers:
+      - "linux/mmzone.h"
+    probability: 10
+    times: 100
+  duration: "30s"
+```

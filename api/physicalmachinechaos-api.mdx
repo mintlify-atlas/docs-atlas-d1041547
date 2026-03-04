@@ -1,0 +1,240 @@
+---
+title: PhysicalMachineChaos API
+description: API reference for PhysicalMachineChaos CRD
+---
+
+`PhysicalMachineChaos` allows you to inject various types of faults into physical machines, including stress, disk, network, process, JVM, clock, Redis, Kafka, HTTP, file, and custom faults.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the PhysicalMachineChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the PhysicalMachineChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="PhysicalMachineChaosSpec" required>
+  Defines the behavior of the physical machine chaos experiment.
+</ParamField>
+
+### PhysicalMachineChaosSpec
+
+<ParamField path="action" type="PhysicalMachineChaosAction" required>
+  Specific physical machine chaos action to perform.
+  
+  **Enum values:**
+  - **Stress:** `stress-cpu`, `stress-mem`
+  - **Disk:** `disk-read-payload`, `disk-write-payload`, `disk-fill`
+  - **Network:** `network-corrupt`, `network-duplicate`, `network-loss`, `network-delay`, `network-partition`, `network-dns`, `network-bandwidth`, `network-flood`, `network-down`
+  - **Process:** `process`
+  - **JVM:** `jvm-exception`, `jvm-gc`, `jvm-latency`, `jvm-return`, `jvm-stress`, `jvm-rule-data`, `jvm-mysql`
+  - **Clock:** `clock`
+  - **Redis:** `redis-expiration`, `redis-penetration`, `redis-cacheLimit`, `redis-restart`, `redis-stop`
+  - **Kafka:** `kafka-fill`, `kafka-flood`, `kafka-io`
+  - **HTTP:** `http-abort`, `http-delay`, `http-config`, `http-request`
+  - **File:** `file-create`, `file-modify`, `file-delete`, `file-rename`, `file-append`, `file-replace`
+  - **VM:** `vm`
+  - **User Defined:** `user_defined`
+</ParamField>
+
+<ParamField path="selector" type="PhysicalMachineSelector" required>
+  Selector for targeting physical machines.
+</ParamField>
+
+<Expandable title="PhysicalMachineSelector">
+  <ParamField path="address" type="[]string">
+    DEPRECATED: Use `selector` instead. Only one of `address` or `selector` can be specified.
+  </ParamField>
+  
+  <ParamField path="selector" type="PhysicalMachineSelectorSpec">
+    Used to select physical machines for chaos injection.
+    
+    Includes fields from `GenericSelectorSpec` (inline):
+    - `namespaces` - Set of namespaces
+    - `labelSelectors` - Label-based selectors
+    - `annotationSelectors` - Annotation-based selectors
+    - `fieldSelectors` - Field-based selectors
+    - `expressionSelectors` - Set-based label expressions
+    
+    Plus:
+    - `physicalMachines` - Map of namespace to list of physical machine names
+  </ParamField>
+  
+  <ParamField path="mode" type="SelectorMode" required>
+    Mode to run chaos action.
+    
+    **Enum values:** `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+  </ParamField>
+  
+  <ParamField path="value" type="string">
+    Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+    
+    - If `fixed`: integer number of machines
+    - If `fixed-percent`: number from 0-100
+    - If `random-max-percent`: number from 0-100
+  </ParamField>
+</Expandable>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+### ExpInfo Fields
+
+The `spec` includes action-specific configuration inline via `ExpInfo`. Only the field matching the action is used:
+
+<ParamField path="stress-cpu" type="*StressCPUSpec">
+  CPU stress configuration. Used when action is `stress-cpu`.
+  
+  - `load` (int) - P percent loading per CPU worker (0-100)
+  - `workers` (int) - Number of workers
+  - `options` ([]string) - Extended stress-ng options
+</ParamField>
+
+<ParamField path="stress-mem" type="*StressMemorySpec">
+  Memory stress configuration. Used when action is `stress-mem`.
+  
+  - `size` (string) - Bytes consumed per worker (e.g., "1G", "50%")
+  - `options` ([]string) - Extended stress-ng options
+</ParamField>
+
+<ParamField path="disk-read-payload" type="*DiskPayloadSpec">
+  Disk read configuration. Used when action is `disk-read-payload`.
+</ParamField>
+
+<ParamField path="disk-write-payload" type="*DiskPayloadSpec">
+  Disk write configuration. Used when action is `disk-write-payload`.
+</ParamField>
+
+<ParamField path="disk-fill" type="*DiskFillSpec">
+  Disk fill configuration. Used when action is `disk-fill`.
+</ParamField>
+
+<ParamField path="network-corrupt" type="*NetworkCorruptSpec">
+  Network corruption configuration. Used when action is `network-corrupt`.
+</ParamField>
+
+<ParamField path="network-duplicate" type="*NetworkDuplicateSpec">
+  Network duplication configuration. Used when action is `network-duplicate`.
+</ParamField>
+
+<ParamField path="network-loss" type="*NetworkLossSpec">
+  Network loss configuration. Used when action is `network-loss`.
+</ParamField>
+
+<ParamField path="network-delay" type="*NetworkDelaySpec">
+  Network delay configuration. Used when action is `network-delay`.
+</ParamField>
+
+<ParamField path="network-partition" type="*NetworkPartitionSpec">
+  Network partition configuration. Used when action is `network-partition`.
+</ParamField>
+
+<ParamField path="network-dns" type="*NetworkDNSSpec">
+  Network DNS configuration. Used when action is `network-dns`.
+</ParamField>
+
+<ParamField path="network-bandwidth" type="*NetworkBandwidthSpec">
+  Network bandwidth configuration. Used when action is `network-bandwidth`.
+</ParamField>
+
+<ParamField path="network-flood" type="*NetworkFloodSpec">
+  Network flood configuration. Used when action is `network-flood`.
+</ParamField>
+
+<ParamField path="network-down" type="*NetworkDownSpec">
+  Network down configuration. Used when action is `network-down`.
+</ParamField>
+
+<ParamField path="process" type="*ProcessSpec">
+  Process configuration. Used when action is `process`.
+  
+  - `process` (string) - Process name or PID
+  - `signal` (int) - Signal number to send
+  - `recoverCmd` (string) - Command to run when recovering
+</ParamField>
+
+For JVM, clock, Redis, Kafka, HTTP, file, VM, and user-defined actions, see the complete type definitions in the source code at `api/v1alpha1/physical_machine_chaos_types.go`.
+
+## Status Fields
+
+<ResponseField name="status" type="PhysicalMachineChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### PhysicalMachineChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Examples
+
+### CPU Stress
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: cpu-stress
+  namespace: chaos-mesh
+spec:
+  action: stress-cpu
+  mode: one
+  selector:
+    namespaces:
+      - default
+    physicalMachines:
+      default:
+        - physical-machine-1
+  stress-cpu:
+    load: 80
+    workers: 2
+  duration: 5m
+```
+
+### Network Delay
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: network-delay
+  namespace: chaos-mesh
+spec:
+  action: network-delay
+  mode: all
+  selector:
+    labelSelectors:
+      role: database
+  network-delay:
+    latency: "100ms"
+    jitter: "10ms"
+    device: "eth0"
+  duration: 10m
+```

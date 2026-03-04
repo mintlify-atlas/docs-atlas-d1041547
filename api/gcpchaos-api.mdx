@@ -1,0 +1,162 @@
+---
+title: GCPChaos API
+description: API reference for GCPChaos CRD
+---
+
+`GCPChaos` allows you to inject faults into Google Cloud Platform services, including stopping instances, resetting instances, and detaching disks.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the GCPChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the GCPChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="GCPChaosSpec" required>
+  Defines the behavior of the GCP chaos experiment.
+</ParamField>
+
+### GCPChaosSpec
+
+<ParamField path="action" type="GCPChaosAction" required>
+  Specific GCP chaos action to perform.
+  
+  **Enum values:**
+  - `node-stop` - Stop a Compute Engine instance
+  - `node-reset` - Reset a Compute Engine instance (one-shot)
+  - `disk-loss` - Detach a disk from a Compute Engine instance
+  
+  **Default:** `node-stop`
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="secretName" type="*string">
+  Name of Kubernetes secret containing GCP credentials.
+  
+  The secret should contain service account JSON key.
+</ParamField>
+
+<ParamField path="project" type="string" required>
+  ID of the GCP project.
+  
+  Part of `GCPSelector` (inline).
+  
+  ```yaml
+  project: "my-gcp-project"
+  ```
+</ParamField>
+
+<ParamField path="zone" type="string" required>
+  Zone of the GCP project.
+  
+  Part of `GCPSelector` (inline).
+  
+  ```yaml
+  zone: "us-central1-a"
+  ```
+</ParamField>
+
+<ParamField path="instance" type="string" required>
+  Name of the Compute Engine instance.
+  
+  Part of `GCPSelector` (inline).
+  
+  ```yaml
+  instance: "my-instance"
+  ```
+</ParamField>
+
+<ParamField path="deviceNames" type="[]string">
+  Device names of disks to detach. Required when action is `disk-loss`.
+  
+  Part of `GCPSelector` (inline).
+  
+  ```yaml
+  deviceNames:
+    - "persistent-disk-1"
+    - "persistent-disk-2"
+  ```
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="GCPChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### GCPChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+<ResponseField name="attachedDiskStrings" type="[]string">
+  Attached disk info strings. Needed when action is `disk-loss`.
+</ResponseField>
+
+## Examples
+
+### Stop Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+metadata:
+  name: node-stop
+  namespace: chaos-mesh
+spec:
+  action: node-stop
+  secretName: gcp-credentials
+  project: my-project
+  zone: us-central1-a
+  instance: my-instance
+  duration: 5m
+```
+
+### Detach Disk
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+metadata:
+  name: disk-loss
+  namespace: chaos-mesh
+spec:
+  action: disk-loss
+  secretName: gcp-credentials
+  project: my-project
+  zone: us-west1-b
+  instance: database-server
+  deviceNames:
+    - persistent-disk-1
+  duration: 3m
+```

@@ -1,0 +1,236 @@
+---
+title: JVMChaos API
+description: API reference for JVMChaos CRD
+---
+
+`JVMChaos` allows you to inject faults into JVM applications, including method latency, exceptions, return values, garbage collection, and stress.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the JVMChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the JVMChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="JVMChaosSpec" required>
+  Defines the behavior of the JVM chaos experiment.
+</ParamField>
+
+### JVMChaosSpec
+
+<ParamField path="selector" type="ContainerSelector" required>
+  Selector for targeting containers. See [ContainerSelector in Common Types](/api/common-types#containerselector).
+  
+  Inherits all fields from `ContainerSelector` (inline), including:
+  - Pod selection criteria
+  - Mode (one/all/fixed/fixed-percent/random-max-percent)
+  - Value (for fixed modes)
+  - Container names
+</ParamField>
+
+<ParamField path="action" type="JVMChaosAction" required>
+  Specific JVM chaos action to perform.
+  
+  **Enum values:**
+  - `latency` - Add latency to method invocation
+  - `return` - Modify method return value
+  - `exception` - Throw custom exception
+  - `stress` - Apply CPU or memory stress
+  - `gc` - Trigger garbage collection
+  - `ruleData` - Inject fault with Byteman rule
+  - `mysql` - MySQL Java client fault injection
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="port" type="int32" default="9277">
+  Port of the agent server.
+  
+  Part of `JVMCommonSpec` (inline).
+</ParamField>
+
+<ParamField path="pid" type="int">
+  PID of the Java process which needs to attach.
+  
+  Part of `JVMCommonSpec` (inline).
+</ParamField>
+
+<ParamField path="class" type="string">
+  Java class name.
+  
+  Part of `JVMClassMethodSpec` (inline). Used for actions: `latency`, `return`, `exception`.
+</ParamField>
+
+<ParamField path="method" type="string">
+  Method name in Java class.
+  
+  Part of `JVMClassMethodSpec` (inline). Used for actions: `latency`, `return`, `exception`.
+</ParamField>
+
+<ParamField path="name" type="string">
+  Byteman rule name. Should be unique. Will be generated if not set.
+  
+  Part of `JVMParameter` (inline).
+</ParamField>
+
+<ParamField path="returnValue" type="string">
+  Return value for action `return`.
+  
+  Part of `JVMParameter` (inline).
+  
+  ```yaml
+  returnValue: "null"
+  ```
+</ParamField>
+
+<ParamField path="exception" type="string">
+  Exception to throw for action `exception`, or exception message for action `mysql`.
+  
+  Part of `JVMParameter` (inline).
+  
+  ```yaml
+  exception: "java.lang.RuntimeException"
+  ```
+</ParamField>
+
+<ParamField path="latency" type="int">
+  Latency duration in milliseconds for action `latency` or `mysql`.
+  
+  Part of `JVMParameter` (inline).
+  
+  ```yaml
+  latency: 1000  # 1 second
+  ```
+</ParamField>
+
+<ParamField path="ruleData" type="string">
+  Byteman rule data for action `ruleData`.
+  
+  Part of `JVMParameter` (inline).
+</ParamField>
+
+<ParamField path="cpuCount" type="int">
+  CPU core number to use. Only set when action is `stress`.
+  
+  Part of `JVMStressCfgSpec` (inline).
+</ParamField>
+
+<ParamField path="memType" type="string">
+  Memory type to locate. Only set when action is `stress`.
+  
+  Valid values: `stack`, `heap`
+  
+  Part of `JVMStressCfgSpec` (inline).
+</ParamField>
+
+<ParamField path="mysqlConnectorVersion" type="string">
+  Version of mysql-connector-java. Only supports `5` (5.X.X) and `8` (8.X.X).
+  
+  Part of `JVMMySQLSpec` (inline). Used for action `mysql`.
+</ParamField>
+
+<ParamField path="database" type="string">
+  Match database name. Empty string means match all databases.
+  
+  Part of `JVMMySQLSpec` (inline). Used for action `mysql`.
+</ParamField>
+
+<ParamField path="table" type="string">
+  Match table name. Empty string means match all tables.
+  
+  Part of `JVMMySQLSpec` (inline). Used for action `mysql`.
+</ParamField>
+
+<ParamField path="sqlType" type="string">
+  Match SQL type. Empty string means match all SQL types.
+  
+  Valid values: `select`, `insert`, `update`, `delete`, `replace`
+  
+  Part of `JVMMySQLSpec` (inline). Used for action `mysql`.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="JVMChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### JVMChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Examples
+
+### Latency Injection
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: jvm-latency
+  namespace: chaos-mesh
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: java-app
+  class: "com.example.HelloWorld"
+  method: "sayHello"
+  latency: 5000
+  duration: "1m"
+```
+
+### Exception Injection
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: jvm-exception
+  namespace: chaos-mesh
+spec:
+  action: exception
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: java-app
+  class: "com.example.Database"
+  method: "query"
+  exception: "java.sql.SQLException"
+  duration: "30s"
+```

@@ -1,0 +1,180 @@
+---
+title: HTTPChaos API
+description: API reference for HTTPChaos CRD
+---
+
+`HTTPChaos` allows you to inject faults into HTTP requests and responses, including delays, aborts, replacing request/response content, and more.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the HTTPChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the HTTPChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="HTTPChaosSpec" required>
+  Defines the behavior of the HTTP chaos experiment.
+</ParamField>
+
+### HTTPChaosSpec
+
+<ParamField path="selector" type="PodSelector" required>
+  Selector for targeting pods. See [PodSelector in Common Types](/api/common-types#podselector).
+  
+  Inherits all fields from `PodSelector` (inline), including:
+  - Pod selection criteria
+  - Mode (one/all/fixed/fixed-percent/random-max-percent)
+  - Value (for fixed modes)
+</ParamField>
+
+<ParamField path="target" type="PodHttpChaosTarget" required>
+  Object to be selected and injected.
+  
+  **Enum values:**
+  - `Request` - Target HTTP requests
+  - `Response` - Target HTTP responses
+</ParamField>
+
+<ParamField path="port" type="int32" required>
+  Target port to proxy.
+  
+  ```yaml
+  port: 8080
+  ```
+</ParamField>
+
+<ParamField path="path" type="*string">
+  Rule to select target by URI path in HTTP request.
+  
+  ```yaml
+  path: "/api/v1/*"
+  ```
+</ParamField>
+
+<ParamField path="method" type="*string">
+  Rule to select target by HTTP method in request.
+  
+  ```yaml
+  method: "GET"
+  ```
+</ParamField>
+
+<ParamField path="code" type="*int32">
+  Rule to select target by HTTP status code in response.
+  
+  ```yaml
+  code: 200
+  ```
+</ParamField>
+
+<ParamField path="request_headers" type="map[string]string">
+  Rule to select target by HTTP headers in request. Key-value pairs represent header name and value.
+  
+  ```yaml
+  request_headers:
+    Content-Type: "application/json"
+    Authorization: "Bearer *"
+  ```
+</ParamField>
+
+<ParamField path="response_headers" type="map[string]string">
+  Rule to select target by HTTP headers in response. Key-value pairs represent header name and value.
+  
+  ```yaml
+  response_headers:
+    Content-Type: "application/json"
+  ```
+</ParamField>
+
+<ParamField path="abort" type="bool">
+  Abort the HTTP request/response. Part of `PodHttpChaosActions` (inline).
+</ParamField>
+
+<ParamField path="delay" type="string">
+  Delay duration for the HTTP request/response. Part of `PodHttpChaosActions` (inline).
+  
+  ```yaml
+  delay: "10s"
+  ```
+</ParamField>
+
+<ParamField path="replace" type="PodHttpChaosReplaceActions">
+  Replace actions for HTTP request/response. Part of `PodHttpChaosActions` (inline).
+</ParamField>
+
+<ParamField path="patch" type="PodHttpChaosPatchActions">
+  Patch actions for HTTP request/response. Part of `PodHttpChaosActions` (inline).
+</ParamField>
+
+<ParamField path="tls" type="*PodHttpChaosTLS">
+  TLS configuration. Will override PodHttpChaos if multiple HTTPChaos experiments are applied.
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="HTTPChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### HTTPChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+<ResponseField name="instances" type="map[string]int64">
+  Always specifies PodHttpChaos generation or empty.
+</ResponseField>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-delay
+  namespace: chaos-mesh
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: web
+  target: Request
+  port: 8080
+  method: "GET"
+  path: "/api/*"
+  delay: "10s"
+  duration: "5m"
+```

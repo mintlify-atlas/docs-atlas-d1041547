@@ -1,0 +1,142 @@
+---
+title: BlockChaos API
+description: API reference for BlockChaos CRD
+---
+
+`BlockChaos` allows you to inject block I/O delays into volumes attached to containers.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: BlockChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the BlockChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the BlockChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="BlockChaosSpec" required>
+  Defines the behavior of the block chaos experiment.
+</ParamField>
+
+### BlockChaosSpec
+
+<ParamField path="action" type="BlockChaosAction" required>
+  Specific block chaos action to perform.
+  
+  **Enum values:**
+  - `delay` - Add delay to block I/O operations
+</ParamField>
+
+<ParamField path="selector" type="ContainerNodeVolumePathSelector" required>
+  Selector for targeting a volume on a node.
+  
+  Inherits all fields from `ContainerSelector` (inline), plus:
+</ParamField>
+
+<ParamField path="volumeName" type="string" required>
+  Name of the volume to inject delay.
+  
+  Part of `ContainerNodeVolumePathSelector`.
+  
+  ```yaml
+  volumeName: "data-volume"
+  ```
+</ParamField>
+
+<ParamField path="delay" type="*BlockDelaySpec">
+  Delay distribution configuration. Required when action is `delay`.
+</ParamField>
+
+<Expandable title="BlockDelaySpec">
+  <ParamField path="latency" type="string">
+    Latency of every I/O request.
+    
+    ```yaml
+    latency: "100ms"
+    ```
+  </ParamField>
+  
+  <ParamField path="correlation" type="string" default="0">
+    Correlation coefficient for latency variation (0-100).
+    
+    ```yaml
+    correlation: "25"
+    ```
+  </ParamField>
+  
+  <ParamField path="jitter" type="string" default="0ms">
+    Jitter for the latency.
+    
+    ```yaml
+    jitter: "10ms"
+    ```
+  </ParamField>
+</Expandable>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="BlockChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### BlockChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+<ResponseField name="ids" type="map[string]int">
+  Always specifies the number of injected chaos actions.
+</ResponseField>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: BlockChaos
+metadata:
+  name: block-delay
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: database
+  volumeName: "data"
+  delay:
+    latency: "100ms"
+    correlation: "50"
+    jitter: "10ms"
+  duration: "5m"
+```

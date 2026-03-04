@@ -105,7 +105,19 @@
               "api/networkchaos-api",
               "api/iochaos-api",
               "api/stresschaos-api",
-              "api/timechaos-api"
+              "api/timechaos-api",
+              "api/kernelchaos-api",
+              "api/httpchaos-api",
+              "api/dnschaos-api",
+              "api/jvmchaos-api",
+              "api/blockchaos-api",
+              "api/awschaos-api",
+              "api/gcpchaos-api",
+              "api/azurechaos-api",
+              "api/physicalmachinechaos-api",
+              "api/workflow-api",
+              "api/schedule-api",
+              "api/statuscheck-api"
             ]
           },
           {
