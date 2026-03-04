@@ -1,97 +1,267 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Chaos Mesh Documentation"
+description: "A cloud-native Chaos Engineering platform for Kubernetes"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#152d74] via-[#149df3] to-[#1d8cf8] dark:from-[#0f1117] dark:via-[#152d74] dark:to-[#1a1d27] py-20">
+  <div className="absolute inset-0 bg-black/20 dark:bg-black/40"></div>
+  <div className="relative max-w-6xl mx-auto px-6 lg:px-8">
+    <div className="grid lg:grid-cols-12 gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+          Build Resilient Systems with Chaos Engineering
+        </h1>
+        <p className="text-lg sm:text-xl text-white/90 max-w-2xl mb-8">
+          Chaos Mesh is a powerful, cloud-native platform that orchestrates chaos experiments on Kubernetes. Test your system's resilience before failures happen in production.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a 
+            href="/quickstart" 
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#149df3] font-semibold hover:bg-gray-100 transition-colors no-underline"
+          >
+            Get Started
+            <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </a>
+          <a 
+            href="/concepts/architecture" 
+            className="inline-flex items-center px-6 py-3 rounded-lg border-2 border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors no-underline"
+          >
+            Learn Architecture
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5 hidden lg:block">
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-br from-[#e95a7b] to-[#149df3] blur-3xl opacity-30"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Quick Start
+  </h2>
+  <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
+    Get Chaos Mesh running in your Kubernetes cluster in minutes
+  </p>
+  
+  <Steps>
+    <Step title="Install Chaos Mesh with Helm">
+      Add the Chaos Mesh Helm repository and install the operator:
+      
+      ```bash
+      helm repo add chaos-mesh https://charts.chaos-mesh.org
+      kubectl create ns chaos-mesh
+      helm install chaos-mesh chaos-mesh/chaos-mesh -n chaos-mesh --set chaosDaemon.runtime=containerd --set chaosDaemon.socketPath=/run/containerd/containerd.sock
+      ```
+      
+      <Note>
+        For Docker runtime, use `--set chaosDaemon.runtime=docker --set chaosDaemon.socketPath=/var/run/docker.sock`
+      </Note>
+    </Step>
+    
+    <Step title="Verify the installation">
+      Check that all Chaos Mesh components are running:
+      
+      ```bash
+      kubectl get pods -n chaos-mesh
+      ```
+      
+      <Accordion title="Expected Output">
+        ```
+        NAME                                        READY   STATUS    RESTARTS   AGE
+        chaos-controller-manager-xxx                3/3     Running   0          1m
+        chaos-daemon-xxx                            1/1     Running   0          1m
+        chaos-dashboard-xxx                         1/1     Running   0          1m
+        ```
+      </Accordion>
+    </Step>
+    
+    <Step title="Create your first chaos experiment">
+      Apply a simple PodChaos experiment to test pod failure:
+      
+      ```yaml
+      apiVersion: chaos-mesh.org/v1alpha1
+      kind: PodChaos
+      metadata:
+        name: pod-failure-example
+        namespace: chaos-mesh
+      spec:
+        action: pod-failure
+        mode: one
+        selector:
+          namespaces:
+            - default
+          labelSelectors:
+            "app": "my-app"
+        duration: "30s"
+      ```
+      
+      Apply with `kubectl apply -f podchaos.yaml` and observe your system's behavior.
+    </Step>
+    
+    <Step title="Monitor with the Dashboard">
+      Access the Chaos Dashboard to visualize and manage experiments:
+      
+      ```bash
+      kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+      ```
+      
+      Visit [http://localhost:2333](http://localhost:2333) to see the web interface.
+    </Step>
+  </Steps>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Explore Chaos Experiments
+  </h2>
+  <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
+    Choose from 14 different chaos experiment types to test your system
+  </p>
+  
+  <CardGroup cols={3}>
+    <Card title="PodChaos" icon="box" href="/chaos/podchaos">
+      Simulate pod failures, kills, and container disruptions
+    </Card>
+    <Card title="NetworkChaos" icon="network-wired" href="/chaos/networkchaos">
+      Inject network delays, loss, corruption, and partitions
+    </Card>
+    <Card title="IOChaos" icon="hard-drive" href="/chaos/iochaos">
+      Simulate I/O delays, errors, and filesystem faults
+    </Card>
+    <Card title="StressChaos" icon="gauge-high" href="/chaos/stresschaos">
+      Generate CPU and memory stress on pods
+    </Card>
+    <Card title="TimeChaos" icon="clock" href="/chaos/timechaos">
+      Simulate clock skew to test time-dependent logic
+    </Card>
+    <Card title="KernelChaos" icon="server" href="/chaos/kernelchaos">
+      Inject kernel-level faults with BPF
+    </Card>
+    <Card title="HTTPChaos" icon="globe" href="/chaos/httpchaos">
+      Manipulate HTTP requests and responses
+    </Card>
+    <Card title="DNSChaos" icon="circle-nodes" href="/chaos/dnschaos">
+      Inject DNS errors and response manipulation
+    </Card>
+    <Card title="JVMChaos" icon="mug-hot" href="/chaos/jvmchaos">
+      Inject faults into JVM applications
+    </Card>
+    <Card title="Cloud Chaos" icon="cloud" href="/chaos/awschaos">
+      Test AWS, GCP, and Azure infrastructure failures
+    </Card>
+    <Card title="BlockChaos" icon="database" href="/chaos/blockchaos">
+      Simulate block device failures
+    </Card>
+    <Card title="PhysicalMachine" icon="computer" href="/chaos/physicalmachinechaos">
+      Extend chaos to physical machines
+    </Card>
+  </CardGroup>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Core Concepts
+  </h2>
+  <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
+    Understand how Chaos Mesh works under the hood
+  </p>
+  
+  <CardGroup cols={2}>
+    <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+      Learn about the controller manager, daemon, and dashboard components
+    </Card>
+    <Card title="Components" icon="cubes" href="/concepts/components">
+      Deep dive into each component's role and responsibilities
+    </Card>
+    <Card title="Chaos Types Overview" icon="list" href="/concepts/chaos-types-overview">
+      Compare all available chaos experiment types
+    </Card>
+    <Card title="Selectors" icon="filter" href="/concepts/selectors">
+      Target specific pods with label, namespace, and field selectors
+    </Card>
+  </CardGroup>
+</div>
 
-Design a docs site that looks great and empowers your users.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+    Advanced Operations
+  </h2>
+  <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
+    Orchestrate complex scenarios and monitor production experiments
+  </p>
+  
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <a href="/operations/workflows" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#149df3] dark:hover:border-[#149df3] overflow-hidden no-underline transition-colors">
+      <div className="p-6">
+        <div className="flex items-center mb-3">
+          <div className="w-10 h-10 rounded-lg bg-[#149df3]/10 dark:bg-[#149df3]/20 flex items-center justify-center mr-3">
+            <svg className="w-6 h-6 text-[#149df3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Workflows</h3>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Chain multiple chaos experiments into complex scenarios with serial and parallel execution
+        </p>
+        <div className="flex items-center text-sm font-medium text-[#149df3] group-hover:text-[#149df3]">
+          Learn more
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+    
+    <a href="/operations/scheduling" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#149df3] dark:hover:border-[#149df3] overflow-hidden no-underline transition-colors">
+      <div className="p-6">
+        <div className="flex items-center mb-3">
+          <div className="w-10 h-10 rounded-lg bg-[#e95a7b]/10 dark:bg-[#e95a7b]/20 flex items-center justify-center mr-3">
+            <svg className="w-6 h-6 text-[#e95a7b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Scheduling</h3>
+        </div>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+          Schedule chaos experiments with cron-like syntax for automated resilience testing
+        </p>
+        <div className="flex items-center text-sm font-medium text-[#e95a7b] group-hover:text-[#e95a7b]">
+          Learn more
+          <svg className="ml-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-20 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-br from-[#149df3] to-[#152d74] dark:from-[#152d74] dark:to-[#1a1d27] p-8 md:p-12 border border-[#149df3]/20">
+    <div className="max-w-2xl">
+      <h2 className="text-3xl font-bold text-white mb-4">
+        Ready to Build Resilient Systems?
+      </h2>
+      <p className="text-lg text-white/90 mb-6">
+        Join thousands of engineers using Chaos Mesh to improve system reliability through chaos engineering.
+      </p>
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#149df3] font-semibold hover:bg-gray-100 transition-colors no-underline"
+      >
+        Start Testing Now
+        <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>

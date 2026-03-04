@@ -1,0 +1,696 @@
+---
+title: Security Best Practices
+description: Production security recommendations for Chaos Mesh deployments
+---
+
+This guide provides security best practices for deploying and operating Chaos Mesh in production environments.
+
+## Installation Security
+
+### 1. Enable Security Mode
+
+Always enable security features in production:
+
+```yaml
+# Controller security
+controllerManager:
+  env:
+    SECURITY_MODE: "true"  # Enable authorization validation
+
+# Dashboard security
+dashboard:
+  securityMode: true  # Require user authentication
+
+# Chaos daemon mTLS
+chaosDaemon:
+  mtls:
+    enabled: true  # Secure controller-daemon communication
+
+# Chaosd mTLS
+controllerManager:
+  chaosdSecurityMode: true  # Secure controller-chaosd communication
+```
+
+Relevant code:
+- `pkg/config/controller.go:96`
+- `pkg/config/dashboard.go:42-43`
+- `helm/chaos-mesh/values.yaml:142,174-176,294-295`
+
+### 2. Use Namespace-Scoped Mode
+
+Limit the blast radius by using namespace-scoped deployment:
+
+```yaml
+clusterScoped: false
+
+controllerManager:
+  targetNamespace: "staging"
+```
+
+Benefits:
+- Prevents accidental chaos in production namespaces
+- Reduces required RBAC permissions
+- Easier compliance and audit
+- Defense in depth
+
+### 3. Enable Namespace Filtering
+
+Require explicit opt-in for chaos injection:
+
+```yaml
+controllerManager:
+  enableFilterNamespace: true
+```
+
+Then annotate allowed namespaces:
+
+```bash
+kubectl annotate namespace staging chaos-mesh.org/inject=enabled
+kubectl annotate namespace dev chaos-mesh.org/inject=enabled
+```
+
+Relevant code: `pkg/config/controller.go:78-80`
+
+## Privileged vs Non-Privileged Mode
+
+Chaos daemon can run in two modes:
+
+### Non-Privileged Mode (Recommended)
+
+Uses specific Linux capabilities instead of full privileged mode:
+
+```yaml
+chaosDaemon:
+  privileged: false
+  
+  capabilities:
+    add:
+      - SYS_PTRACE    # Attach to processes
+      - NET_ADMIN     # Network manipulation
+      - NET_RAW       # Raw socket access
+      - MKNOD         # Create device nodes
+      - SYS_CHROOT    # Change root directory
+      - SYS_ADMIN     # System administration
+      - KILL          # Send signals
+      - IPC_LOCK      # Lock memory
+```
+
+Source: `helm/chaos-mesh/values.yaml:191-202`
+
+**Benefits:**
+- Reduced attack surface
+- Compliance with security policies
+- Suitable for most chaos types
+
+**Limitations:**
+- Some kernel-level chaos may not work
+- BPFKI (eBPF) features require privileged mode
+
+### Privileged Mode
+
+Grants full system access:
+
+```yaml
+chaosDaemon:
+  privileged: true
+```
+
+**Use only when:**
+- You need kernel-level chaos (KernelChaos)
+- You're using BPFKI features
+- You've assessed the security implications
+
+Source: `helm/chaos-mesh/templates/chaos-daemon-rbac.yaml:69-118`
+
+## RBAC Configuration
+
+### Implement Least Privilege
+
+Create granular roles for different user types:
+
+```yaml
+# Chaos engineers (full access to specific namespace)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-engineers
+  namespace: staging
+roleRef:
+  kind: ClusterRole
+  name: chaos-mesh-chaos-controller-manager-target-namespace
+subjects:
+  - kind: Group
+    name: chaos-engineers
+---
+# Chaos viewers (read-only)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-viewer
+  namespace: staging
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+---
+# Network chaos only (limited chaos types)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: network-chaos-only
+  namespace: staging
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["networkchaos", "dnschaos"]
+    verbs: ["create", "delete", "get", "list", "patch", "update"]
+```
+
+### Avoid Cluster-Admin
+
+Never grant chaos users cluster-admin permissions. Use the built-in roles:
+
+- `chaos-controller-manager-target-namespace`: For creating chaos experiments
+- `chaos-dashboard-target-namespace`: For dashboard access
+- Custom roles: For specific chaos types
+
+## Network Security
+
+### 1. mTLS for Component Communication
+
+Enable mutual TLS between components:
+
+```yaml
+chaosDaemon:
+  mtls:
+    enabled: true
+
+controllerManager:
+  chaosdSecurityMode: true
+```
+
+Chaos Mesh auto-generates certificates during installation. Certificates are stored as secrets in the chaos-mesh namespace.
+
+Relevant code: `helm/chaos-mesh/values.yaml:172-176,142`
+
+### 2. Webhook Configuration
+
+Configure appropriate timeouts and failure policies:
+
+```yaml
+webhook:
+  timeoutSeconds: 5       # Fast failure for availability
+  FailurePolicy: Fail     # Deny on webhook failure (secure default)
+```
+
+For high availability, consider:
+
+```yaml
+webhook:
+  FailurePolicy: Ignore   # Allow creation if webhook is down
+```
+
+**Security trade-off:** `Ignore` improves availability but may allow unauthorized experiments if the webhook is down.
+
+Source: `helm/chaos-mesh/values.yaml:554-558`
+
+### 3. Dashboard Network Exposure
+
+Use secure methods to expose the dashboard:
+
+**Option 1: NodePort (Development)**
+```yaml
+dashboard:
+  service:
+    type: NodePort
+```
+
+**Option 2: ClusterIP + Ingress (Production)**
+```yaml
+dashboard:
+  service:
+    type: ClusterIP
+  
+  ingress:
+    enabled: true
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    hosts:
+      - name: chaos.example.com
+        tls: true
+        tlsSecret: chaos-dashboard-tls
+```
+
+**Option 3: kubectl port-forward (Most Secure)**
+```bash
+kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+```
+
+Access at `http://localhost:2333`
+
+## Runtime Security
+
+### 1. Disable Host Network Testing
+
+Prevent chaos on host-network pods:
+
+```yaml
+controllerManager:
+  allowHostNetworkTesting: false  # Default: false
+```
+
+Host-network pods have elevated privileges and can affect cluster networking. Only enable if absolutely necessary.
+
+Relevant code: `helm/chaos-mesh/values.yaml:60-61,104-105`
+
+### 2. Configure Resource Limits
+
+Prevent resource exhaustion:
+
+```yaml
+controllerManager:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 25m
+      memory: 256Mi
+
+chaosDaemon:
+  resourceProfile: "standard"  # or "intensive" for production
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+dashboard:
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 25m
+      memory: 256Mi
+```
+
+Source: `helm/chaos-mesh/values.yaml:103-113,178-245,326-337`
+
+### 3. Enable Profiling Selectively
+
+Disable pprof in production:
+
+```yaml
+enableProfiling: false
+```
+
+Relevant code: `helm/chaos-mesh/values.yaml:41-42`
+
+## Authentication & Authorization
+
+### 1. Use Service Account Tokens
+
+Generate time-limited tokens for dashboard users:
+
+```bash
+# Create service account
+kubectl create serviceaccount chaos-user -n chaos-mesh
+
+# Bind to appropriate role
+kubectl create rolebinding chaos-user \
+  --clusterrole=chaos-mesh-chaos-controller-manager-target-namespace \
+  --serviceaccount=chaos-mesh:chaos-user \
+  --namespace=staging
+
+# Generate 24-hour token
+kubectl create token chaos-user -n chaos-mesh --duration=24h
+```
+
+### 2. Configure GCP OAuth (GKE)
+
+For GKE clusters, use OAuth:
+
+```yaml
+dashboard:
+  gcpSecurityMode:
+    enabled: true
+    existingSecret: gcp-oauth-secret  # Create secret with GCP_CLIENT_ID and GCP_CLIENT_SECRET
+```
+
+Create the secret:
+
+```bash
+kubectl create secret generic gcp-oauth-secret -n chaos-mesh \
+  --from-literal=GCP_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+  --from-literal=GCP_CLIENT_SECRET="your-client-secret"
+```
+
+Relevant code: `helm/chaos-mesh/values.yaml:297-302`
+
+### 3. Implement Token Rotation
+
+Rotate service account tokens regularly:
+
+```bash
+# Revoke old tokens by recreating the service account
+kubectl delete serviceaccount chaos-user -n chaos-mesh
+kubectl create serviceaccount chaos-user -n chaos-mesh
+# Recreate role bindings
+```
+
+## Audit and Monitoring
+
+### 1. Enable Kubernetes Audit Logging
+
+Configure API server to log chaos operations:
+
+```yaml
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+  - level: RequestResponse
+    omitStages: ["RequestReceived"]
+    resources:
+      - group: "chaos-mesh.org"
+        resources: ["*"]
+```
+
+### 2. Monitor Authorization Events
+
+Watch for authorization failures:
+
+```bash
+# Controller authorization logs
+kubectl logs -n chaos-mesh -l app.kubernetes.io/component=controller-manager \
+  | grep "auth validate"
+
+# Dashboard authorization logs
+kubectl logs -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard \
+  | grep "forbidden"
+```
+
+### 3. Track Chaos Experiments
+
+Monitor active chaos:
+
+```bash
+# List all active chaos experiments
+kubectl get podchaos,networkchaos,iochaos,stresschaos --all-namespaces
+
+# Watch chaos events
+kubectl get events --all-namespaces --field-selector involvedObject.apiGroup=chaos-mesh.org
+```
+
+## Data Security
+
+### 1. Secure Dashboard Database
+
+Use secrets for database credentials:
+
+```yaml
+dashboard:
+  databaseSecretName: "chaos-dashboard-db-secret"
+  env:
+    DATABASE_DRIVER: "mysql"
+    # DATABASE_DATASOURCE omitted - loaded from secret
+```
+
+Create the secret:
+
+```bash
+kubectl create secret generic chaos-dashboard-db-secret -n chaos-mesh \
+  --from-literal=DATABASE_DATASOURCE="user:password@tcp(mysql:3306)/chaos?parseTime=true"
+```
+
+Relevant code: `helm/chaos-mesh/values.yaml:270-272,379-383`
+
+### 2. Configure Data Retention
+
+Limit data retention:
+
+```yaml
+dashboard:
+  env:
+    CLEAN_SYNC_PERIOD: "12h"
+    TTL_EVENT: "168h"       # 7 days
+    TTL_EXPERIMENT: "336h"  # 14 days
+    TTL_SCHEDULE: "336h"    # 14 days
+    TTL_WORKFLOW: "336h"    # 14 days
+```
+
+Source: `helm/chaos-mesh/values.yaml:385-394`
+
+### 3. Secure Persistent Volumes
+
+Encrypt dashboard storage:
+
+```yaml
+dashboard:
+  persistentVolume:
+    enabled: true
+    size: 8Gi
+    storageClassName: encrypted-ssd  # Use encrypted storage class
+```
+
+## Container Security
+
+### 1. Use Security Contexts
+
+Configure security contexts:
+
+```yaml
+controllerManager:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+
+dashboard:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+```
+
+Source: `helm/chaos-mesh/values.yaml:56-57,168-169,275-276`
+
+### 2. Use Private Container Registries
+
+Pull images from private registries:
+
+```yaml
+images:
+  registry: "your-registry.example.com"
+  tag: "v2.6.0"
+
+imagePullSecrets:
+  - name: regcred
+```
+
+Create the secret:
+
+```bash
+kubectl create secret docker-registry regcred -n chaos-mesh \
+  --docker-server=your-registry.example.com \
+  --docker-username=your-user \
+  --docker-password=your-password
+```
+
+Source: `helm/chaos-mesh/values.yaml:44-53`
+
+### 3. Scan Images for Vulnerabilities
+
+Regularly scan Chaos Mesh images:
+
+```bash
+# Using Trivy
+trivy image ghcr.io/chaos-mesh/chaos-mesh:latest
+trivy image ghcr.io/chaos-mesh/chaos-daemon:latest
+trivy image ghcr.io/chaos-mesh/chaos-dashboard:latest
+```
+
+## Multi-Tenancy
+
+### 1. Isolate Chaos Mesh Instances
+
+Deploy separate Chaos Mesh instances per team:
+
+```bash
+# Team A
+helm install chaos-mesh-team-a chaos-mesh/chaos-mesh -n chaos-mesh-team-a \
+  --set clusterScoped=false \
+  --set controllerManager.targetNamespace=team-a-apps
+
+# Team B
+helm install chaos-mesh-team-b chaos-mesh/chaos-mesh -n chaos-mesh-team-b \
+  --set clusterScoped=false \
+  --set controllerManager.targetNamespace=team-b-apps
+```
+
+### 2. Use NetworkPolicies
+
+Restrict network access:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chaos-mesh-isolation
+  namespace: chaos-mesh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: chaos-mesh
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: chaos-mesh
+  egress:
+    - to:
+      - namespaceSelector: {}
+    - to:
+      - podSelector: {}
+    - ports:
+      - protocol: TCP
+        port: 53
+      - protocol: UDP
+        port: 53
+```
+
+## Compliance and Governance
+
+### 1. Implement Change Approval
+
+Require approval for chaos experiments:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-production
+  namespace: production
+  annotations:
+    approval-ticket: "JIRA-1234"
+    approved-by: "senior-sre@example.com"
+    approval-date: "2026-03-04"
+spec:
+  # ...
+```
+
+### 2. Document Chaos Experiments
+
+Use labels and annotations:
+
+```yaml
+metadata:
+  labels:
+    chaos-type: "network"
+    severity: "high"
+    team: "platform"
+  annotations:
+    description: "Simulates network partition between services"
+    runbook: "https://wiki.example.com/chaos/network-partition"
+    oncall: "platform-team@example.com"
+```
+
+### 3. Schedule Chaos During Business Hours
+
+Use schedules to control when chaos runs:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: weekday-chaos
+spec:
+  schedule: "0 10 * * 1-5"  # 10 AM weekdays
+  type: PodChaos
+  # ...
+```
+
+## Incident Response
+
+### 1. Prepare Rollback Procedures
+
+Document how to stop chaos:
+
+```bash
+# Pause all chaos experiments
+kubectl annotate podchaos --all experiment.chaos-mesh.org/pause=true -n production
+
+# Delete all chaos experiments
+kubectl delete podchaos,networkchaos,iochaos,stresschaos --all -n production
+
+# Restart affected pods
+kubectl rollout restart deployment/my-app -n production
+```
+
+### 2. Emergency Dashboard Access
+
+Keep an emergency service account:
+
+```bash
+# Create break-glass account
+kubectl create serviceaccount chaos-admin -n chaos-mesh
+kubectl create clusterrolebinding chaos-admin \
+  --clusterrole=cluster-admin \
+  --serviceaccount=chaos-mesh:chaos-admin
+
+# Store token securely (e.g., in a password manager)
+kubectl create token chaos-admin -n chaos-mesh --duration=168h
+```
+
+### 3. Monitor Blast Radius
+
+Set up alerts for unexpected chaos:
+
+```yaml
+# Prometheus alert example
+groups:
+  - name: chaos-mesh
+    rules:
+      - alert: UnexpectedChaosExperiment
+        expr: count(chaos_mesh_experiments{namespace="production"}) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Unexpected chaos in production namespace"
+```
+
+## Security Checklist
+
+Before deploying to production:
+
+- [ ] Enable security mode (`securityMode: true`, `SECURITY_MODE: "true"`)
+- [ ] Enable mTLS (`mtls.enabled: true`, `chaosdSecurityMode: true`)
+- [ ] Use namespace-scoped mode or enable namespace filtering
+- [ ] Configure non-privileged mode for chaos-daemon
+- [ ] Implement least-privilege RBAC
+- [ ] Disable host network testing
+- [ ] Configure resource limits
+- [ ] Disable profiling
+- [ ] Use secure dashboard exposure (Ingress with TLS)
+- [ ] Enable audit logging
+- [ ] Configure data retention policies
+- [ ] Use security contexts
+- [ ] Scan container images
+- [ ] Set up monitoring and alerts
+- [ ] Document rollback procedures
+- [ ] Train team on security practices
+
+## Related Configuration
+
+- See [Authorization](/security/authorization) for authentication and authorization details
+- See [RBAC](/security/rbac) for role-based access control configuration

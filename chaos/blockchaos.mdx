@@ -1,0 +1,141 @@
+---
+title: BlockChaos
+description: Inject I/O delays into block devices and volumes
+---
+
+BlockChaos allows you to inject delays into I/O operations on block devices and persistent volumes, simulating slow disk performance.
+
+## Actions
+
+BlockChaos currently supports:
+
+- **delay**: Add latency to I/O requests on block devices
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The block chaos action to perform.
+  
+  **Options:** `delay`
+</ParamField>
+
+<ParamField path="spec.volumeName" type="string" required>
+  Name of the persistent volume to target.
+</ParamField>
+
+<ParamField path="spec.delay" type="object">
+  Delay configuration for I/O operations.
+  
+  <Expandable title="Delay Parameters">
+    <ParamField path="latency" type="string" required>
+      Base latency for each I/O request (e.g., `100ms`, `1s`).
+    </ParamField>
+    
+    <ParamField path="jitter" type="string">
+      Random jitter to add to latency.
+      
+      **Default:** `0ms`
+    </ParamField>
+    
+    <ParamField path="correlation" type="string">
+      Correlation between consecutive delay values (percentage).
+      
+      **Default:** `0`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action (e.g., `30s`, `5m`, `1h`).
+</ParamField>
+
+<ParamField path="spec.selector" type="object" required>
+  Pod selector to target specific pods. See [Selector](/concepts/selectors) for details.
+</ParamField>
+
+<ParamField path="spec.mode" type="string" required>
+  Selection mode for target pods.
+  
+  **Options:** `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+</ParamField>
+
+<ParamField path="spec.containerNames" type="array">
+  List of container names to affect. If not set, the first container will be injected.
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## Examples
+
+### Add I/O Delay to Persistent Volume
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: BlockChaos
+metadata:
+  name: hostpath-example-delay
+spec:
+  selector:
+    labelSelectors:
+      app: hostpath-example
+  mode: all
+  volumeName: hostpath-example
+  action: delay
+  delay:
+    latency: 1s
+```
+
+This example adds 1 second of latency to all I/O operations on the `hostpath-example` volume for pods with the label `app: hostpath-example`.
+
+### Add I/O Delay with Jitter
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: BlockChaos
+metadata:
+  name: disk-delay-jitter
+spec:
+  selector:
+    namespaces:
+      - database
+    labelSelectors:
+      app: postgres
+  mode: all
+  volumeName: postgres-data
+  action: delay
+  delay:
+    latency: 100ms
+    jitter: 50ms
+    correlation: "50"
+  duration: "5m"
+```
+
+This example adds 100ms base latency with 50ms jitter (50-150ms range) and 50% correlation between consecutive delays to simulate realistic disk variability.
+
+## Prerequisites
+
+1. **Persistent Volume**: The target volume must be mounted in the pod
+2. **Volume Name**: You must know the name of the persistent volume (not the PVC name)
+3. **Privileged Access**: Chaos Daemon needs privileged access to manipulate block devices
+
+## Implementation Details
+
+BlockChaos works by:
+1. Identifying the block device associated with the specified volume
+2. Using eBPF or kernel modules to intercept I/O operations
+3. Adding configured delays to I/O requests
+
+The delay parameters allow you to simulate:
+- **Constant delay**: Set `latency` only
+- **Variable delay**: Add `jitter` for randomness
+- **Correlated delay**: Use `correlation` to make consecutive delays similar (simulating sustained disk slowness)
+
+Source: `api/v1alpha1/blockchaos_types.go:35-73`
+
+## Limitations
+
+- Currently only supports the `delay` action
+- Requires knowledge of the persistent volume name (check with `kubectl get pv`)
+- Cannot target specific files or directories within a volume

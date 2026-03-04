@@ -1,0 +1,128 @@
+---
+title: DNSChaos
+description: Simulate DNS failures in Kubernetes pods
+---
+
+DNSChaos allows you to simulate DNS failures by intercepting DNS requests from targeted pods and returning errors or random IP addresses.
+
+## Actions
+
+DNSChaos supports the following actions:
+
+- **error**: Return an error when a DNS request is sent
+- **random**: Return a random IP address when a DNS request is sent
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The DNS chaos action to perform.
+  
+  **Options:** `error`, `random`
+</ParamField>
+
+<ParamField path="spec.patterns" type="array">
+  Domain name patterns to affect. Supports:
+  - Exact domain names (e.g., `google.com`)
+  - Wildcards at the end (e.g., `github.*`)
+  - Single character placeholder `?` (e.g., `chaos-mes?.org`)
+  
+  **Note:** Wildcard `*` must be at the end of the string. If patterns is empty, all domain names are affected.
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action (e.g., `30s`, `5m`, `1h`).
+</ParamField>
+
+<ParamField path="spec.selector" type="object" required>
+  Pod selector to target specific pods. See [Selector](/concepts/selectors) for details.
+  
+  <Expandable title="Selector Fields">
+    <ParamField path="namespaces" type="array">
+      Namespaces to select pods from.
+    </ParamField>
+    
+    <ParamField path="labelSelectors" type="object">
+      Label selectors to filter pods.
+    </ParamField>
+    
+    <ParamField path="pods" type="object">
+      Map of namespace to pod names.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="spec.mode" type="string" required>
+  Selection mode for target pods.
+  
+  **Options:** `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+</ParamField>
+
+<ParamField path="spec.value" type="string">
+  Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`. Specifies the number or percentage of pods to affect.
+</ParamField>
+
+<ParamField path="spec.containerNames" type="array">
+  List of container names to affect. If not set, the first container will be injected.
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## Examples
+
+### Return Random IPs for Specific Domains
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-chaos-example
+spec:
+  action: random
+  mode: all
+  patterns:
+    - google.com
+    - chaos-mesh.*
+    - github.?om
+  selector:
+    namespaces:
+      - busybox
+  duration: "50s"
+```
+
+This example returns random IP addresses for DNS requests to:
+- `google.com` (exact match)
+- Any domain starting with `chaos-mesh.` (e.g., `chaos-mesh.org`, `chaos-mesh.io`)
+- `github.com` or `github.aom` (single character wildcard)
+
+### Return Errors for All DNS Requests
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: DNSChaos
+metadata:
+  name: dns-error-all
+spec:
+  action: error
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: my-app
+  duration: "2m"
+```
+
+This example causes all DNS requests from pods with label `app: my-app` to fail with an error.
+
+## Implementation Details
+
+DNSChaos works by:
+1. Injecting a sidecar container into targeted pods
+2. Intercepting DNS requests from the container
+3. Manipulating the DNS response based on the configured action:
+   - `error`: Returns a DNS error
+   - `random`: Returns a random IP address
+
+Source: `api/v1alpha1/dnschaos_type.go:25-34`

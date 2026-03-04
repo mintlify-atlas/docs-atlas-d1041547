@@ -1,0 +1,167 @@
+---
+title: TimeChaos API Reference
+description: Complete API reference for TimeChaos custom resource definition
+---
+
+## TimeChaos
+
+TimeChaos is the Schema for simulating time skew in containers by shifting system clocks.
+
+### Metadata
+
+<ParamField path="apiVersion" type="string" required>
+  `chaos-mesh.org/v1alpha1`
+</ParamField>
+
+<ParamField path="kind" type="string" required>
+  `TimeChaos`
+</ParamField>
+
+<ParamField path="metadata" type="ObjectMeta">
+  Standard Kubernetes metadata. Refer to the Kubernetes API documentation for fields like `name`, `namespace`, `labels`, and `annotations`.
+</ParamField>
+
+### Spec
+
+<ParamField path="spec" type="TimeChaosSpec" required>
+  Defines the behavior of a time chaos experiment.
+</ParamField>
+
+## TimeChaosSpec
+
+<ParamField path="timeOffset" type="string" required>
+  TimeOffset defines the delta time of injected program. It's a possibly signed sequence of decimal numbers, such as `"300ms"`, `"-1.5h"` or `"2h45m"`.
+  
+  Valid time units are `"ns"`, `"us"` (or `"µs"`), `"ms"`, `"s"`, `"m"`, `"h"`.
+  
+  **Examples:**
+  - `"10s"` - Shift time forward by 10 seconds
+  - `"-1h"` - Shift time backward by 1 hour
+  - `"2h45m"` - Shift time forward by 2 hours and 45 minutes
+</ParamField>
+
+<ParamField path="clockIds" type="[]string">
+  ClockIds defines all affected clock IDs.
+  
+  **Available options:**
+  - `CLOCK_REALTIME` - System-wide real-time clock
+  - `CLOCK_MONOTONIC` - Monotonic time since unspecified starting point
+  - `CLOCK_PROCESS_CPUTIME_ID` - Per-process CPU-time clock
+  - `CLOCK_THREAD_CPUTIME_ID` - Thread-specific CPU-time clock
+  - `CLOCK_MONOTONIC_RAW` - Raw hardware-based monotonic time
+  - `CLOCK_REALTIME_COARSE` - Faster but less precise REALTIME
+  - `CLOCK_MONOTONIC_COARSE` - Faster but less precise MONOTONIC
+  - `CLOCK_BOOTTIME` - Monotonic time including suspend time
+  - `CLOCK_REALTIME_ALARM` - Like REALTIME, can wake system from suspend
+  - `CLOCK_BOOTTIME_ALARM` - Like BOOTTIME, can wake system from suspend
+  
+  **Default:** `["CLOCK_REALTIME"]`
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration represents the duration of the chaos action. A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as `"300ms"`, `"-1.5h"` or `"2h45m"`.
+  
+  Valid time units are `"ns"`, `"us"` (or `"µs"`), `"ms"`, `"s"`, `"m"`, `"h"`.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  RemoteCluster represents the remote cluster where the chaos will be deployed.
+</ParamField>
+
+### Container Selector Fields
+
+TimeChaosSpec embeds `ContainerSelector` which includes:
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Selector is used to select pods that are used to inject chaos action.
+</ParamField>
+
+<ParamField path="mode" type="SelectorMode" required>
+  Mode defines the mode to run chaos action.
+  
+  **Supported values:**
+  - `one` - Select one random pod
+  - `all` - Select all pods
+  - `fixed` - Select a fixed number of pods
+  - `fixed-percent` - Select a fixed percentage of pods
+  - `random-max-percent` - Select a random percentage up to max
+</ParamField>
+
+<ParamField path="value" type="string">
+  Value is required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+</ParamField>
+
+<ParamField path="containerNames" type="[]string">
+  ContainerNames indicates list of the name of affected container. If not set, the first container will be injected.
+</ParamField>
+
+## TimeChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Conditions represents the current global condition of the chaos.
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Experiment records the last experiment state.
+</ResponseField>
+
+## Example
+
+### Shift Time Forward
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-shift-forward
+  namespace: chaos-mesh
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: myapp
+  timeOffset: '1h'
+  duration: '60s'
+```
+
+### Shift Time Backward
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-shift-backward
+  namespace: chaos-mesh
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: time-sensitive-app
+  timeOffset: '-30m'
+  duration: '120s'
+```
+
+### Affect Multiple Clock Types
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-multi-clock
+  namespace: chaos-mesh
+spec:
+  mode: fixed
+  value: '2'
+  selector:
+    namespaces:
+      - default
+  timeOffset: '24h'
+  clockIds:
+    - CLOCK_REALTIME
+    - CLOCK_MONOTONIC
+  duration: '300s'
+```

@@ -1,0 +1,96 @@
+---
+title: API Reference Overview
+description: Complete API reference for Chaos Mesh CRDs and gRPC services
+---
+
+Chaos Mesh provides a comprehensive set of APIs for creating and managing chaos experiments in Kubernetes. The APIs are divided into two main categories:
+
+## Kubernetes CRD APIs
+
+Chaos Mesh extends Kubernetes with Custom Resource Definitions (CRDs) that allow you to define chaos experiments declaratively. Each CRD type represents a specific category of fault injection:
+
+<CardGroup cols={2}>
+  <Card title="PodChaos" icon="cube" href="/api/podchaos-api">
+    Kill pods, containers, or inject pod failures
+  </Card>
+  
+  <Card title="NetworkChaos" icon="network-wired" href="/api/networkchaos-api">
+    Inject network delays, packet loss, corruption, and partitions
+  </Card>
+  
+  <Card title="IOChaos" icon="hard-drive" href="/api/iochaos-api">
+    Inject I/O latency, faults, and file system errors
+  </Card>
+  
+  <Card title="StressChaos" icon="gauge-high" href="/api/stresschaos-api">
+    Stress CPU and memory resources
+  </Card>
+  
+  <Card title="TimeChaos" icon="clock" href="/api/timechaos-api">
+    Simulate time skew and clock offset
+  </Card>
+  
+  <Card title="Common Types" icon="shapes" href="/api/common-types">
+    Shared types used across all chaos experiments
+  </Card>
+</CardGroup>
+
+## gRPC API
+
+The Chaos Daemon exposes a gRPC API that the controller uses to apply chaos actions directly on nodes:
+
+<CardGroup cols={2}>
+  <Card title="gRPC Overview" icon="bolt" href="/api/grpc-overview">
+    Overview of the ChaosDaemon gRPC service
+  </Card>
+  
+  <Card title="ChaosDaemon API" icon="server" href="/api/chaosdaemon-api">
+    Complete gRPC service and message reference
+  </Card>
+</CardGroup>
+
+## API Version
+
+All Chaos Mesh CRDs use the `chaos-mesh.org/v1alpha1` API version:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-example
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - default
+```
+
+## Common Structure
+
+All chaos CRDs share a common structure:
+
+- **TypeMeta**: Standard Kubernetes type metadata (apiVersion, kind)
+- **ObjectMeta**: Standard Kubernetes object metadata (name, namespace, labels, annotations)
+- **Spec**: Chaos-specific configuration including selectors and action parameters
+- **Status**: Current state of the chaos experiment
+
+## Selector Configuration
+
+Most chaos types use selectors to target specific pods or containers. See [Common Types](/api/common-types) for details on:
+
+- `PodSelector` - Select pods by namespace, labels, and other criteria
+- `ContainerSelector` - Select specific containers within pods
+- `SelectorMode` - Control how many targets are affected (one, all, fixed, percentage)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Common Types" icon="book" href="/api/common-types">
+    Learn about shared types like PodSelector and Duration
+  </Card>
+  
+  <Card title="Create Your First Experiment" icon="flask" href="/quickstart">
+    Get started with a simple chaos experiment
+  </Card>
+</CardGroup>

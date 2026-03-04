@@ -1,0 +1,169 @@
+---
+title: Introduction to Chaos Mesh
+description: A cloud-native Chaos Engineering platform that orchestrates chaos on Kubernetes environments
+---
+
+Chaos Mesh is an open source cloud-native Chaos Engineering platform that offers various types of fault simulation and has an enormous capability to orchestrate fault scenarios.
+
+## What is Chaos Mesh?
+
+Chaos Mesh enables you to conveniently simulate various abnormalities that might occur in reality during development, testing, and production environments. By intentionally introducing controlled failures, you can discover potential problems in your system before they occur in production.
+
+<Note>
+  Chaos Mesh is a [Cloud Native Computing Foundation (CNCF)](https://www.cncf.io/) incubating project, which demonstrates its maturity and community support.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multiple Fault Types" icon="bolt">
+    Support for pod failures, network chaos, I/O faults, time skew, stress testing, and more
+  </Card>
+  <Card title="Web Dashboard" icon="monitor">
+    Intuitive UI for designing, managing, and monitoring chaos experiments
+  </Card>
+  <Card title="Workflow Orchestration" icon="diagram-project">
+    Define complex fault scenarios with serial and parallel execution
+  </Card>
+  <Card title="Kubernetes Native" icon="dharmachakra">
+    Built on Kubernetes CRDs for seamless integration with your cluster
+  </Card>
+</CardGroup>
+
+## Architecture Components
+
+Chaos Mesh consists of three main components:
+
+### Chaos Controller Manager
+
+The core component responsible for scheduling and managing Chaos experiments. It contains several CRD Controllers:
+
+- **Workflow Controller**: Orchestrates complex chaos scenarios
+- **Scheduler Controller**: Manages scheduled chaos experiments
+- **Fault Type Controllers**: Handle specific chaos types (PodChaos, NetworkChaos, IOChaos, etc.)
+
+### Chaos Daemon
+
+Runs as a DaemonSet on each node with privileged permissions (configurable). The daemon:
+
+- Interferes with network devices, file systems, and kernels
+- Accesses target Pod namespaces to inject faults
+- Communicates with the Controller Manager via gRPC
+
+### Chaos Dashboard
+
+A web-based UI that provides:
+
+- Visual experiment design and creation
+- Real-time experiment monitoring
+- Experiment history and analytics
+- RBAC and security controls
+
+## Supported Chaos Types
+
+Chaos Mesh supports a comprehensive set of fault injection types:
+
+| Chaos Type | Description |
+|------------|-------------|
+| **PodChaos** | Pod lifecycle faults (kill, failure, container kill) |
+| **NetworkChaos** | Network faults (delay, loss, duplicate, corrupt, partition, bandwidth) |
+| **IOChaos** | File system I/O faults (latency, errno, attribute override) |
+| **TimeChaos** | Time skew simulation without affecting other containers |
+| **StressChaos** | CPU and memory stress testing |
+| **DNSChaos** | DNS resolution failures and errors |
+| **HTTPChaos** | HTTP request/response manipulation |
+| **KernelChaos** | Kernel-level fault injection |
+| **JVMChaos** | JVM application fault injection |
+| **AWSChaos** | AWS service fault simulation |
+| **GCPChaos** | GCP service fault simulation |
+| **AzureChaos** | Azure service fault simulation |
+| **PhysicalMachineChaos** | Faults on physical or VM machines |
+| **BlockChaos** | Block device I/O faults |
+
+## How It Works
+
+Chaos Mesh uses Kubernetes [CustomResourceDefinitions (CRD)](https://kubernetes.io/docs/tasks/access-kubernetes-api/custom-resources/custom-resource-definitions/) to define chaos objects.
+
+<Steps>
+  <Step title="Define the Chaos Experiment">
+    Create a YAML manifest specifying the chaos type, target selector, and fault parameters
+  </Step>
+  <Step title="Apply to Kubernetes">
+    Use `kubectl apply` to submit the chaos experiment to your cluster
+  </Step>
+  <Step title="Controller Manages Lifecycle">
+    The Chaos Controller Manager processes the CRD and coordinates with Chaos Daemon
+  </Step>
+  <Step title="Daemon Injects Fault">
+    Chaos Daemon executes the fault injection on the target pods/nodes
+  </Step>
+  <Step title="Monitor Results">
+    Observe the experiment through the Dashboard or kubectl
+  </Step>
+</Steps>
+
+## Use Cases
+
+### Development & Testing
+- Validate error handling and retry logic
+- Test service mesh resilience (circuit breakers, retries, timeouts)
+- Verify monitoring and alerting configurations
+
+### Production Readiness
+- Conduct game days and disaster recovery drills
+- Test autoscaling behavior under stress
+- Validate backup and recovery procedures
+
+### Continuous Validation
+- Integrate chaos experiments into CI/CD pipelines
+- Automated regression testing for resilience
+- SLO/SLA validation under various failure scenarios
+
+## Security Considerations
+
+Chaos Mesh requires privileged access to inject faults effectively:
+
+<Warning>
+  By default, Chaos Daemon runs with privileged permissions. In production environments, consider:
+  - Using namespace-scoped mode instead of cluster-scoped
+  - Enabling security mode on the Dashboard
+  - Restricting chaos experiments to specific namespaces
+  - Using RBAC to control who can create chaos experiments
+</Warning>
+
+You can disable privileged mode and use specific Linux capabilities:
+
+```yaml
+chaosDaemon:
+  privileged: false
+  capabilities:
+    add:
+      - SYS_PTRACE
+      - NET_ADMIN
+      - NET_RAW
+      - MKNOD
+      - SYS_CHROOT
+      - SYS_ADMIN
+      - KILL
+      - IPC_LOCK
+```
+
+## Community & Support
+
+Chaos Mesh has an active community:
+
+- **Twitter**: [@chaos_mesh](https://twitter.com/chaos_mesh)
+- **Slack**: Join `#project-chaos-mesh` in [CNCF Slack](https://slack.cncf.io/)
+- **GitHub**: [github.com/chaos-mesh/chaos-mesh](https://github.com/chaos-mesh/chaos-mesh)
+- **Monthly Meetings**: Community updates and demos on the fourth Thursday of every month
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Install Chaos Mesh and run your first experiment in minutes
+  </Card>
+  <Card title="Installation Guide" icon="download" href="/installation">
+    Detailed installation instructions for production environments
+  </Card>
+</CardGroup>

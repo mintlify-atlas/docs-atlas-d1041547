@@ -1,0 +1,243 @@
+---
+title: Authorization
+description: Understanding authorization mechanisms in Chaos Mesh
+---
+
+Chaos Mesh implements a comprehensive authorization system to ensure chaos experiments are executed securely and only by authorized users.
+
+## Overview
+
+Chaos Mesh uses Kubernetes' native authorization mechanisms to control access to chaos experiments:
+
+- **RBAC (Role-Based Access Control)**: Kubernetes RBAC controls who can create and manage chaos experiments
+- **Webhook-based Authorization**: Validates user permissions when creating chaos resources
+- **Dashboard Security Mode**: Token-based authentication for the web UI
+- **Namespace Isolation**: Controls which namespaces can be affected by chaos experiments
+
+## Authorization Flow
+
+When a user attempts to create a chaos experiment, Chaos Mesh performs authorization checks:
+
+1. **Webhook Validation**: The `validate-auth` webhook intercepts the request
+2. **Subject Access Review**: Chaos Mesh performs a Kubernetes SubjectAccessReview to verify the user has permission
+3. **Namespace Check**: Validates the user has access to all affected namespaces
+4. **Resource Creation**: If authorized, the chaos resource is created
+
+Relevant code: `pkg/webhook/validate_auth.go:78-134`
+
+## Security Modes
+
+### Controller Security Mode
+
+Enables authorization validation in the admission webhook:
+
+```yaml
+controllerManager:
+  env:
+    SECURITY_MODE: "true"  # Default: enabled
+```
+
+When enabled, the webhook validates that users have the necessary RBAC permissions to create chaos experiments in the target namespaces.
+
+### Dashboard Security Mode
+
+Requires users to provide credentials when using the dashboard:
+
+```yaml
+dashboard:
+  securityMode: true  # Default: enabled
+```
+
+With security mode enabled:
+- Users must provide a Kubernetes service account token
+- Dashboard uses the token to authenticate API requests
+- Authorization checks use the user's actual permissions
+
+With security mode disabled:
+- Dashboard uses its own service account
+- All users share the same permissions
+- **Not recommended for production**
+
+Relevant code: `pkg/config/dashboard.go:42-43`
+
+### GCP Security Mode
+
+Enables Google Cloud Platform OAuth authentication:
+
+```yaml
+dashboard:
+  gcpSecurityMode:
+    enabled: true
+    clientId: "your-client-id"
+    clientSecret: "your-client-secret"
+```
+
+This provides SSO integration for GKE environments.
+
+## Dashboard Authorization
+
+The dashboard uses a middleware to authorize API requests:
+
+```go
+// Checks user permissions using SelfSubjectAccessReview
+// Source: pkg/dashboard/apiserver/utils/auth.go:31-88
+```
+
+For each request:
+1. Extracts the user token from HTTP headers
+2. Determines the required verb (`list` for GET, `patch` for modifications)
+3. Creates a SelfSubjectAccessReview for the `chaos-mesh.org` resource group
+4. Returns 403 if the user lacks permissions in the target namespace
+
+## Namespace-Level Authorization
+
+The authorization validator checks permissions at the namespace level:
+
+```go
+// For each affected namespace, verify user can create chaos
+for namespace := range affectedNamespaces {
+    allow, err := v.auth(req.UserInfo, namespace, requestKind)
+    if !allow {
+        return admission.Denied(fmt.Sprintf("%s is forbidden on namespace %s", username, namespace))
+    }
+}
+```
+
+Relevant code: `pkg/webhook/validate_auth.go:119-128`
+
+## Cluster-Level Privileges
+
+Some chaos experiments require cluster-level privileges:
+
+- Experiments targeting multiple namespaces
+- Experiments with empty namespace selector (cluster-wide)
+- Physical machine chaos (affects nodes)
+
+These require users to have permissions at the cluster scope:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: chaos-user-cluster
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chaos-mesh-chaos-controller-manager-target-namespace
+subjects:
+  - kind: User
+    name: chaos-engineer@example.com
+```
+
+## SubjectAccessReview API
+
+Chaos Mesh uses Kubernetes SubjectAccessReview to validate permissions:
+
+```go
+sar := &authorizationv1.SubjectAccessReview{
+    Spec: authorizationv1.SubjectAccessReviewSpec{
+        ResourceAttributes: &authorizationv1.ResourceAttributes{
+            Namespace: namespace,
+            Verb:      "create",
+            Group:     "chaos-mesh.org",
+            Resource:  resourceName,
+        },
+        User:   userInfo.Username,
+        Groups: userInfo.Groups,
+    },
+}
+```
+
+This ensures authorization decisions are made by Kubernetes, respecting all RBAC rules, admission controllers, and authorization webhooks in the cluster.
+
+Relevant code: `pkg/webhook/validate_auth.go:142-163`
+
+## Exempted Resource Types
+
+Some resource types skip RBAC validation:
+
+- `AWSChaos`, `GCPChaos`, `AzureChaos` (cloud provider chaos)
+- `PodNetworkChaos`, `PodIOChaos`, `PodHttpChaos` (pod-level)
+- `PhysicalMachine` (infrastructure resources)
+- `StatusCheck`, `RemoteCluster` (supporting resources)
+- `WorkflowNode` (internal workflow state)
+
+Relevant code: `pkg/webhook/validate_auth.go:36-47`
+
+## Best Practices
+
+### Enable Security Mode
+
+Always enable security mode in production:
+
+```yaml
+controllerManager:
+  env:
+    SECURITY_MODE: "true"
+
+dashboard:
+  securityMode: true
+```
+
+### Use Service Account Tokens
+
+Provide users with service account tokens with appropriate permissions:
+
+```bash
+# Create service account
+kubectl create serviceaccount chaos-engineer -n chaos-mesh
+
+# Bind to chaos role
+kubectl create rolebinding chaos-engineer \
+  --clusterrole=chaos-mesh-chaos-controller-manager-target-namespace \
+  --serviceaccount=chaos-mesh:chaos-engineer \
+  --namespace=default
+
+# Get token
+kubectl create token chaos-engineer -n chaos-mesh
+```
+
+### Implement Least Privilege
+
+Grant users only the permissions they need:
+
+- Use `Role` and `RoleBinding` for namespace-scoped access
+- Use `ClusterRole` and `ClusterRoleBinding` only when necessary
+- Create custom roles for specific chaos types if needed
+
+### Audit Authorization
+
+Monitor authorization decisions:
+
+```bash
+# View webhook logs
+kubectl logs -n chaos-mesh -l app.kubernetes.io/component=controller-manager | grep "auth validate"
+
+# View dashboard authorization
+kubectl logs -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard | grep "auth"
+```
+
+## Troubleshooting
+
+### Permission Denied Errors
+
+If users receive "forbidden" errors:
+
+1. Check the user has the correct RBAC permissions
+2. Verify security mode is configured correctly
+3. Ensure the namespace is not filtered (if using `enableFilterNamespace`)
+4. Check SubjectAccessReview in controller logs
+
+### Dashboard Authentication Issues
+
+If dashboard login fails:
+
+1. Verify `securityMode: true` is set
+2. Check the service account token is valid
+3. Ensure the service account has dashboard access permissions
+4. Review dashboard logs for authentication errors
+
+## Related Configuration
+
+- See [RBAC](/security/rbac) for role and permission details
+- See [Best Practices](/security/best-practices) for production security recommendations

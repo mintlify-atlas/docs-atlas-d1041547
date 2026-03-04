@@ -1,0 +1,466 @@
+---
+title: Status Check
+description: Validate system health and experiment outcomes with automated status checks
+---
+
+## Overview
+
+StatusCheck provides automated health validation during chaos experiments. It enables you to verify that your system remains functional or meets specific criteria while chaos is being injected, making experiments safer and more informative.
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Experiment Validation" icon="check-circle">
+    Verify application endpoints remain responsive during chaos injection
+  </Card>
+  
+  <Card title="SLA Monitoring" icon="chart-line">
+    Ensure service level objectives are maintained under fault conditions
+  </Card>
+  
+  <Card title="Continuous Health Check" icon="heartbeat">
+    Monitor system health throughout workflow execution
+  </Card>
+  
+  <Card title="Failure Detection" icon="triangle-exclamation">
+    Automatically detect when experiments cause unacceptable degradation
+  </Card>
+</CardGroup>
+
+## StatusCheck Types
+
+### HTTP Status Check
+
+Currently, Chaos Mesh supports HTTP-based status checks to validate endpoint availability and response codes.
+
+<CodeGroup>
+```yaml Basic HTTP Check
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+metadata:
+  name: api-health-check
+spec:
+  mode: Continuous
+  type: HTTP
+  duration: "5m"
+  timeoutSeconds: 5
+  intervalSeconds: 10
+  failureThreshold: 3
+  successThreshold: 1
+  http:
+    url: http://my-service.default.svc.cluster.local:8080/health
+    method: GET
+    criteria:
+      statusCode: "200"
+```
+</CodeGroup>
+
+## Execution Modes
+
+<ParamField path="mode" type="StatusCheckMode" default="Synchronous">
+  Defines how the status check executes.
+  
+  **Synchronous**: Exits immediately after success or failure threshold is reached.
+  
+  **Continuous**: Continues checking until duration expires or failure threshold is exceeded.
+</ParamField>
+
+### Synchronous Mode
+
+Best for validating a specific condition before proceeding:
+
+<CodeGroup>
+```yaml Synchronous Check
+spec:
+  mode: Synchronous
+  type: HTTP
+  duration: "1m"
+  successThreshold: 3  # Exit after 3 consecutive successes
+  failureThreshold: 5  # Fail after 5 consecutive failures
+  http:
+    url: http://app/ready
+    criteria:
+      statusCode: "200"
+```
+</CodeGroup>
+
+### Continuous Mode
+
+Best for ongoing monitoring during experiments:
+
+<CodeGroup>
+```yaml Continuous Check
+spec:
+  mode: Continuous
+  type: HTTP
+  duration: "10m"
+  failureThreshold: 3  # Abort if 3 consecutive failures
+  http:
+    url: http://app/health
+    criteria:
+      statusCode: "200-299"  # Accept any 2xx status
+```
+</CodeGroup>
+
+## Configuration Parameters
+
+<ParamField path="type" type="StatusCheckType" default="HTTP" required>
+  Type of status check to perform. Currently only `HTTP` is supported.
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Maximum duration for the status check execution.
+  
+  Format: Duration string (e.g., "5m", "30s", "1h30m")
+  
+  - Synchronous: Maximum time to wait for success threshold
+  - Continuous: Total monitoring duration
+</ParamField>
+
+<ParamField path="timeoutSeconds" type="int" default="1">
+  Timeout in seconds for each individual status check execution. Must be ≥ 1.
+</ParamField>
+
+<ParamField path="intervalSeconds" type="int" default="10">
+  Interval in seconds between status check executions. Must be ≥ 1.
+</ParamField>
+
+<ParamField path="failureThreshold" type="int" default="3">
+  Minimum consecutive failures before status check is considered failed. Must be ≥ 1.
+  
+  When exceeded, the status check terminates with failure status.
+</ParamField>
+
+<ParamField path="successThreshold" type="int" default="1">
+  Minimum consecutive successes before status check is considered successful. Must be ≥ 1.
+  
+  Only applies to Synchronous mode. When exceeded, the check terminates with success status.
+</ParamField>
+
+<ParamField path="recordsHistoryLimit" type="int" default="100">
+  Number of status check execution records to retain. Range: 1-1000.
+  
+  Controls memory usage and history depth.
+</ParamField>
+
+## HTTP Status Check Configuration
+
+<ParamField path="http.url" type="string" required>
+  Full URL to check, including protocol and path.
+  
+  Examples:
+  - `http://my-service:8080/health`
+  - `https://api.example.com/status`
+  - `http://10.0.0.1:3000/ready`
+</ParamField>
+
+<ParamField path="http.method" type="string" default="GET">
+  HTTP method to use. Supported values: `GET`, `POST`
+</ParamField>
+
+<ParamField path="http.headers" type="map[string][]string">
+  HTTP headers to include in the request.
+  
+  Example:
+  ```yaml
+  headers:
+    Authorization: ["Bearer token123"]
+    Content-Type: ["application/json"]
+  ```
+</ParamField>
+
+<ParamField path="http.body" type="string">
+  Request body for POST requests.
+  
+  Example:
+  ```yaml
+  body: '{"check": "health"}'
+  ```
+</ParamField>
+
+<ParamField path="http.criteria.statusCode" type="string" required>
+  Expected HTTP status code(s).
+  
+  Formats:
+  - Single code: `"200"`
+  - Range (inclusive): `"200-299"`
+  - Multiple codes: Use multiple checks or ranges
+  
+  Examples:
+  - `"200"` - Exact match
+  - `"200-204"` - Range including both endpoints
+  - `"2xx"` - Not supported, use `"200-299"`
+</ParamField>
+
+## Status Check in Workflows
+
+Status checks are most powerful when integrated into workflows:
+
+<CodeGroup>
+```yaml Workflow with Status Check
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: chaos-with-validation
+spec:
+  entry: the-entry
+  templates:
+    - name: the-entry
+      templateType: Parallel
+      deadline: 240s
+      children:
+        - continuous-health-check
+        - network-chaos-experiment
+    
+    - name: continuous-health-check
+      templateType: StatusCheck
+      deadline: 120s
+      abortWithStatusCheck: true  # Abort workflow if check fails
+      statusCheck:
+        mode: Continuous
+        type: HTTP
+        intervalSeconds: 5
+        failureThreshold: 3
+        http:
+          url: http://my-app.default.svc:8080/health
+          method: GET
+          criteria:
+            statusCode: "200"
+    
+    - name: network-chaos-experiment
+      templateType: NetworkChaos
+      deadline: 120s
+      networkChaos:
+        action: delay
+        mode: all
+        selector:
+          labelSelectors:
+            "app": "my-app"
+        delay:
+          latency: "100ms"
+```
+</CodeGroup>
+
+<ParamField path="abortWithStatusCheck" type="bool" default="false">
+  When used in a workflow template, determines whether to abort the entire workflow if the status check's failure threshold is exceeded.
+  
+  - `true`: Workflow is aborted on check failure
+  - `false`: Status check failure is recorded but workflow continues
+</ParamField>
+
+## Status and Conditions
+
+<ResponseField name="status" type="StatusCheckStatus">
+  Current state of the status check.
+
+  <Expandable title="properties">
+    <ResponseField name="startTime" type="metav1.Time">
+      Time when status check execution started.
+    </ResponseField>
+    
+    <ResponseField name="completionTime" type="metav1.Time">
+      Time when status check completed (success, failure, or duration exceeded).
+    </ResponseField>
+    
+    <ResponseField name="count" type="int64">
+      Total number of check executions performed.
+    </ResponseField>
+    
+    <ResponseField name="conditions" type="[]StatusCheckCondition">
+      Latest observations of status check state.
+      
+      Condition types:
+      - `Completed`: Check has finished execution
+      - `DurationExceed`: Duration limit was reached
+      - `FailureThresholdExceed`: Failure threshold was exceeded
+      - `SuccessThresholdExceed`: Success threshold was exceeded (Synchronous mode)
+    </ResponseField>
+    
+    <ResponseField name="records" type="[]StatusCheckRecord">
+      History of individual check executions (limited by `recordsHistoryLimit`).
+      
+      Each record contains:
+      - `startTime`: When the check executed
+      - `outcome`: `Success` or `Failure`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Advanced Examples
+
+### POST Request with Headers
+
+<CodeGroup>
+```yaml Authenticated POST Check
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StatusCheck
+metadata:
+  name: api-post-check
+spec:
+  mode: Synchronous
+  type: HTTP
+  duration: "30s"
+  intervalSeconds: 5
+  successThreshold: 2
+  http:
+    url: http://api.default.svc:8080/validate
+    method: POST
+    headers:
+      Content-Type: ["application/json"]
+      X-API-Key: ["secret-key-123"]
+    body: '{"check": true}'
+    criteria:
+      statusCode: "200-201"
+```
+</CodeGroup>
+
+### Status Range Validation
+
+<CodeGroup>
+```yaml Accept Multiple Status Codes
+http:
+  url: http://service/endpoint
+  criteria:
+    statusCode: "200-299"  # Any successful 2xx response
+```
+</CodeGroup>
+
+### High-Frequency Monitoring
+
+<CodeGroup>
+```yaml Rapid Health Checks
+spec:
+  mode: Continuous
+  type: HTTP
+  duration: "2m"
+  intervalSeconds: 1      # Check every second
+  timeoutSeconds: 1       # 1 second timeout
+  failureThreshold: 5     # Allow 5 consecutive failures
+  recordsHistoryLimit: 200
+  http:
+    url: http://critical-service/health
+    criteria:
+      statusCode: "200"
+```
+</CodeGroup>
+
+## Monitoring Status Checks
+
+### View Status Check Details
+
+<CodeGroup>
+```bash Get Status
+kubectl get statuscheck my-check -o yaml
+```
+
+```bash Watch Execution
+kubectl get statuscheck my-check -w
+```
+
+```bash View Records
+kubectl get statuscheck my-check -o jsonpath='{.status.records}' | jq
+```
+</CodeGroup>
+
+### Check Conditions
+
+<CodeGroup>
+```bash View Conditions
+kubectl get statuscheck my-check -o jsonpath='{.status.conditions}' | jq
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set Realistic Thresholds">
+    Configure failure thresholds based on your application's expected behavior:
+    - Transient failures: Higher threshold (e.g., 5-10)
+    - Critical endpoints: Lower threshold (e.g., 2-3)
+  </Accordion>
+  
+  <Accordion title="Choose Appropriate Intervals">
+    Balance between responsiveness and overhead:
+    - Critical checks: 1-5 seconds
+    - Standard checks: 10-30 seconds
+    - Long-running experiments: 30-60 seconds
+  </Accordion>
+  
+  <Accordion title="Use Continuous Mode for Workflows">
+    In parallel workflow executions, use Continuous mode to monitor health throughout the entire chaos injection period.
+  </Accordion>
+  
+  <Accordion title="Configure Timeouts Carefully">
+    Set `timeoutSeconds` lower than `intervalSeconds` to prevent overlapping checks.
+  </Accordion>
+  
+  <Accordion title="Limit Record History">
+    For long-running or high-frequency checks, adjust `recordsHistoryLimit` to manage memory usage.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Status Check Always Fails">
+    **Check URL accessibility:**
+    ```bash
+    kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+      curl -v http://your-service/health
+    ```
+    
+    **Verify timeout settings:**
+    - Ensure `timeoutSeconds` is sufficient for response time
+    - Check network latency to the target service
+  </Accordion>
+  
+  <Accordion title="Timeout Issues">
+    Increase timeout if legitimate responses take longer:
+    ```yaml
+    timeoutSeconds: 10  # Increase from default 1
+    ```
+  </Accordion>
+  
+  <Accordion title="Status Code Mismatch">
+    **Check actual response:**
+    ```bash
+    kubectl run -it --rm debug --image=curlimages/curl --restart=Never -- \
+      curl -w "\nStatus: %{http_code}\n" http://your-service/health
+    ```
+    
+    **Use ranges for flexibility:**
+    ```yaml
+    criteria:
+      statusCode: "200-299"  # Accept any 2xx
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Future Enhancements
+
+Status checks may be extended to support:
+- Response body validation
+- Custom command execution
+- Kubernetes resource checks
+- Prometheus query validation
+- gRPC health checks
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="diagram-project" href="/operations/workflows">
+    Integrate status checks into complex workflows
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-bar" href="/operations/monitoring">
+    Track status check metrics with Prometheus
+  </Card>
+  
+  <Card title="Dashboard" icon="chart-line" href="/operations/dashboard">
+    View status check execution through the UI
+  </Card>
+  
+  <Card title="Scheduling" icon="clock" href="/operations/scheduling">
+    Combine status checks with scheduled experiments
+  </Card>
+</CardGroup>

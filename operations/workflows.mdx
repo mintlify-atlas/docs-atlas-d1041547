@@ -1,0 +1,359 @@
+---
+title: Workflows
+description: Orchestrate complex chaos experiments with serial and parallel task execution
+---
+
+## Overview
+
+Workflows in Chaos Mesh enable you to orchestrate complex chaos engineering scenarios by combining multiple chaos experiments and tasks. Workflows support serial execution, parallel execution, conditional branching, and custom tasks, providing powerful capabilities for testing system resilience.
+
+## Workflow Structure
+
+A Workflow consists of an entry point and a collection of templates. Each template defines a specific step in the workflow execution.
+
+<CodeGroup>
+```yaml Basic Workflow Structure
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: example-workflow
+spec:
+  entry: the-entry  # Starting template name
+  templates:
+    - name: the-entry
+      templateType: Serial
+      children:
+        - step-1
+        - step-2
+```
+</CodeGroup>
+
+## Template Types
+
+### Serial Templates
+
+Serial templates execute child templates sequentially, one after another. Each step must complete before the next begins.
+
+<CodeGroup>
+```yaml Serial Execution
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: try-workflow-serial
+spec:
+  entry: the-entry
+  templates:
+    - name: the-entry
+      templateType: Serial
+      deadline: 240s
+      children:
+        - workflow-stress-chaos
+        - prefix-suspending
+        - workflow-network-chaos
+        - suffix-suspending
+        - workflow-pod-chaos
+    
+    - name: prefix-suspending
+      templateType: Suspend
+      deadline: 10s
+    
+    - name: workflow-network-chaos
+      templateType: NetworkChaos
+      deadline: 20s
+      networkChaos:
+        direction: to
+        action: delay
+        mode: all
+        selector:
+          labelSelectors:
+            "app": "hello-kubernetes"
+        delay:
+          latency: "90ms"
+          correlation: "25"
+          jitter: "90ms"
+    
+    - name: workflow-stress-chaos
+      templateType: StressChaos
+      deadline: 20s
+      stressChaos:
+        mode: one
+        selector:
+          labelSelectors:
+            "app": "hello-kubernetes"
+        stressors:
+          cpu:
+            workers: 1
+            load: 20
+            options: ["--cpu 1", "--timeout 600"]
+    
+    - name: suffix-suspending
+      templateType: Suspend
+      deadline: 5s
+    
+    - name: workflow-pod-chaos
+      templateType: Schedule
+      deadline: 40s
+      schedule:
+        schedule: "@every 2s"
+        concurrencyPolicy: Allow
+        type: PodChaos
+        podChaos:
+          action: pod-kill
+          mode: one
+          selector:
+            labelSelectors:
+              "app": "hello-kubernetes"
+```
+</CodeGroup>
+
+### Parallel Templates
+
+Parallel templates execute all child templates simultaneously, allowing you to inject multiple chaos experiments at once.
+
+<CodeGroup>
+```yaml Parallel Execution
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Workflow
+metadata:
+  name: try-workflow-parallel
+spec:
+  entry: the-entry
+  templates:
+    - name: the-entry
+      templateType: Parallel
+      deadline: 240s
+      children:
+        - workflow-stress-chaos
+        - workflow-network-chaos
+        - workflow-pod-chaos
+    
+    - name: workflow-network-chaos
+      templateType: NetworkChaos
+      deadline: 20s
+      networkChaos:
+        direction: to
+        action: delay
+        mode: all
+        selector:
+          labelSelectors:
+            "app": "hello-kubernetes"
+        delay:
+          latency: "90ms"
+          correlation: "25"
+          jitter: "90ms"
+    
+    - name: workflow-pod-chaos
+      templateType: Schedule
+      deadline: 40s
+      schedule:
+        schedule: "@every 2s"
+        concurrencyPolicy: Allow
+        type: PodChaos
+        podChaos:
+          action: pod-kill
+          mode: one
+          selector:
+            labelSelectors:
+              "app": "hello-kubernetes"
+    
+    - name: workflow-stress-chaos
+      templateType: StressChaos
+      deadline: 20s
+      stressChaos:
+        mode: one
+        selector:
+          labelSelectors:
+            "app": "hello-kubernetes"
+        stressors:
+          cpu:
+            workers: 1
+            load: 20
+            options: ["--cpu 1", "--timeout 600"]
+```
+</CodeGroup>
+
+### Suspend Templates
+
+Suspend templates pause workflow execution for a specified duration, useful for adding delays between chaos experiments.
+
+<CodeGroup>
+```yaml Suspend Template
+templates:
+  - name: pause-for-observation
+    templateType: Suspend
+    deadline: 30s
+```
+</CodeGroup>
+
+### Task Templates
+
+Task templates allow you to run custom Kubernetes containers as part of your workflow, enabling custom validation, setup, or teardown logic.
+
+<CodeGroup>
+```yaml Custom Task
+templates:
+  - name: custom-validation
+    templateType: Task
+    deadline: 60s
+    task:
+      container:
+        name: validation
+        image: my-validation:latest
+        command: ["./validate.sh"]
+      volumes:
+        - name: config
+          configMap:
+            name: validation-config
+```
+</CodeGroup>
+
+### Conditional Branches
+
+Conditional branches in Task templates allow dynamic workflow paths based on expression evaluation.
+
+<CodeGroup>
+```yaml Conditional Branching
+templates:
+  - name: decision-task
+    templateType: Task
+    task:
+      container:
+        name: decision
+        image: decision-maker:latest
+    conditionalBranches:
+      - target: high-load-path
+        expression: "context.result == 'high'"
+      - target: low-load-path
+        expression: "context.result == 'low'"
+      - target: default-path
+        # Empty expression always evaluates to true
+```
+</CodeGroup>
+
+## Workflow Status
+
+<ResponseField name="status" type="WorkflowStatus">
+  Represents the current state of the workflow execution.
+
+  <Expandable title="properties">
+    <ResponseField name="entryNode" type="string">
+      Name of the entry node created for this workflow.
+    </ResponseField>
+    
+    <ResponseField name="startTime" type="metav1.Time">
+      Time when workflow execution started.
+    </ResponseField>
+    
+    <ResponseField name="endTime" type="metav1.Time">
+      Time when workflow execution completed.
+    </ResponseField>
+    
+    <ResponseField name="conditions" type="[]WorkflowCondition">
+      Latest observations of workflow state.
+      
+      Condition types:
+      - `Accomplished`: Workflow has completed all steps
+      - `Scheduled`: Workflow has been scheduled for execution
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Workflow Management
+
+### Creating a Workflow
+
+<CodeGroup>
+```bash kubectl
+kubectl apply -f workflow.yaml
+```
+
+```bash Verify Creation
+kubectl get workflow -n chaos-mesh
+```
+</CodeGroup>
+
+### Viewing Workflow Status
+
+<CodeGroup>
+```bash Check Status
+kubectl get workflow my-workflow -n chaos-mesh -o yaml
+```
+
+```bash Watch Progress
+kubectl get workflownode -l chaos-mesh.org/workflow=my-workflow -w
+```
+</CodeGroup>
+
+### Aborting a Workflow
+
+You can abort a running workflow by adding an annotation:
+
+<CodeGroup>
+```bash Abort Workflow
+kubectl annotate workflow my-workflow \
+  workflow.chaos-mesh.org/abort=true -n chaos-mesh
+```
+</CodeGroup>
+
+### Deleting a Workflow
+
+<CodeGroup>
+```bash Delete Workflow
+kubectl delete workflow my-workflow -n chaos-mesh
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set Appropriate Deadlines">
+    Always specify deadlines for templates to prevent indefinite execution. The deadline should account for the expected duration plus a safety margin.
+  </Accordion>
+  
+  <Accordion title="Use Suspend for Observation">
+    Add Suspend templates between chaos experiments to allow time for system observation and metric collection.
+  </Accordion>
+  
+  <Accordion title="Combine Serial and Parallel">
+    Nest Serial and Parallel templates to create complex execution patterns. For example, run multiple chaos types in parallel within each step of a serial workflow.
+  </Accordion>
+  
+  <Accordion title="Include Status Checks">
+    Incorporate StatusCheck templates to validate system health during workflow execution. See [Status Checks](/operations/status-check) for details.
+  </Accordion>
+</AccordionGroup>
+
+## Common Template Types
+
+All chaos types can be used as workflow templates:
+
+- `PodChaos` - Pod lifecycle faults
+- `NetworkChaos` - Network delay, loss, corruption
+- `StressChaos` - CPU and memory stress
+- `IOChaos` - I/O delays and failures  
+- `TimeChaos` - Time skew simulation
+- `HTTPChaos` - HTTP request/response manipulation
+- `DNSChaos` - DNS resolution faults
+- `KernelChaos` - Kernel-level faults
+- `JVMChaos` - JVM application faults
+- `AWSChaos`, `GCPChaos`, `AzureChaos` - Cloud provider faults
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Scheduling" icon="clock" href="/operations/scheduling">
+    Schedule workflows and experiments to run on a recurring basis
+  </Card>
+  
+  <Card title="Status Checks" icon="check" href="/operations/status-check">
+    Validate experiment outcomes and system health
+  </Card>
+  
+  <Card title="Dashboard" icon="chart-line" href="/operations/dashboard">
+    Monitor and manage workflows through the web UI
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-bar" href="/operations/monitoring">
+    Track workflow metrics with Prometheus
+  </Card>
+</CardGroup>

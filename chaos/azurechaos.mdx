@@ -1,0 +1,216 @@
+---
+title: AzureChaos
+description: Inject failures into Azure Virtual Machines and disks
+---
+
+AzureChaos allows you to simulate Microsoft Azure infrastructure failures by manipulating Virtual Machines and managed disks through the Azure API.
+
+## Actions
+
+AzureChaos supports the following actions:
+
+- **vm-stop**: Stop an Azure Virtual Machine
+- **vm-restart**: Restart an Azure Virtual Machine
+- **disk-detach**: Detach a managed disk from a Virtual Machine
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The Azure chaos action to perform.
+  
+  **Options:** `vm-stop`, `vm-restart`, `disk-detach`
+  
+  **Default:** `vm-stop`
+</ParamField>
+
+<ParamField path="spec.subscriptionID" type="string" required>
+  Azure subscription ID where the resources are located.
+</ParamField>
+
+<ParamField path="spec.resourceGroupName" type="string" required>
+  Name of the Azure resource group containing the Virtual Machine.
+</ParamField>
+
+<ParamField path="spec.vmName" type="string" required>
+  Name of the Virtual Machine to target.
+</ParamField>
+
+<ParamField path="spec.diskName" type="string">
+  Name of the managed disk to detach. Required when action is `disk-detach`.
+</ParamField>
+
+<ParamField path="spec.lun" type="integer">
+  Logical Unit Number (LUN) of the data disk. Required when action is `disk-detach`.
+  
+  The LUN identifies which disk attachment to detach (VMs can have multiple data disks).
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action. For `vm-stop` and `disk-detach`, resources are affected for this duration then recovered. Not applicable to `vm-restart` (oneshot action).
+</ParamField>
+
+<ParamField path="spec.secretName" type="string">
+  Name of the Kubernetes secret containing Azure service principal credentials. If not specified, uses the default Azure credential chain.
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## Azure Credentials Setup
+
+You need to provide Azure credentials to Chaos Mesh.
+
+### Create Service Principal
+
+1. Create a service principal:
+
+```bash
+az ad sp create-for-rbac --name chaos-mesh-sp --role Contributor \
+  --scopes /subscriptions/{subscription-id}/resourceGroups/{resource-group}
+```
+
+2. Note the output values:
+   - `appId` (Client ID)
+   - `password` (Client Secret)
+   - `tenant` (Tenant ID)
+
+### Create Kubernetes Secret
+
+Create a secret with the service principal credentials:
+
+```bash
+kubectl create secret generic azure-credentials \
+  --from-literal=client_id=YOUR_APP_ID \
+  --from-literal=client_secret=YOUR_PASSWORD \
+  --from-literal=tenant_id=YOUR_TENANT_ID \
+  -n chaos-mesh
+```
+
+Then reference it in your AzureChaos:
+
+```yaml
+spec:
+  secretName: azure-credentials
+```
+
+### Required Azure Permissions
+
+The service principal needs the following permissions:
+- `Microsoft.Compute/virtualMachines/start/action`
+- `Microsoft.Compute/virtualMachines/powerOff/action`
+- `Microsoft.Compute/virtualMachines/restart/action`
+- `Microsoft.Compute/virtualMachines/read`
+- `Microsoft.Compute/disks/read`
+- `Microsoft.Compute/virtualMachines/write` (for disk operations)
+
+The `Contributor` or `Virtual Machine Contributor` role on the resource group provides these permissions.
+
+### Alternative: Managed Identity (AKS)
+
+If running on AKS, you can use Managed Identity:
+
+1. Enable managed identity on your AKS cluster
+2. Grant the identity appropriate permissions on the target resources
+3. Don't specify `secretName` in the AzureChaos spec
+
+## Examples
+
+### Stop Virtual Machine
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+metadata:
+  name: vm-stop-example
+  namespace: chaos-mesh
+spec:
+  action: vm-stop
+  subscriptionID: 12345678-1234-1234-1234-123456789abc
+  resourceGroupName: my-resource-group
+  vmName: my-vm
+  secretName: azure-credentials
+  duration: "5m"
+```
+
+This example stops the specified VM for 5 minutes, then automatically starts it again.
+
+### Restart Virtual Machine
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+metadata:
+  name: vm-restart-example
+  namespace: chaos-mesh
+spec:
+  action: vm-restart
+  subscriptionID: 12345678-1234-1234-1234-123456789abc
+  resourceGroupName: production-rg
+  vmName: web-server-vm
+  secretName: azure-credentials
+```
+
+This example performs a one-time restart of the VM. This is a oneshot action.
+
+### Detach Managed Disk
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AzureChaos
+metadata:
+  name: disk-detach-example
+  namespace: chaos-mesh
+spec:
+  action: disk-detach
+  subscriptionID: 12345678-1234-1234-1234-123456789abc
+  resourceGroupName: database-rg
+  vmName: sql-server-vm
+  diskName: sql-data-disk
+  lun: 0
+  secretName: azure-credentials
+  duration: "3m"
+```
+
+This example detaches the specified managed disk (at LUN 0) from the VM for 3 minutes, then automatically reattaches it.
+
+## Implementation Details
+
+AzureChaos uses the Azure SDK to:
+1. Authenticate using service principal credentials or managed identity
+2. Call Azure Compute APIs to manipulate resources:
+   - `vm-stop`: Calls PowerOff API, then Start after duration
+   - `vm-restart`: Calls Restart API (oneshot)
+   - `disk-detach`: Removes disk from VM configuration, then reattaches after duration
+
+Source: `api/v1alpha1/azurechaos_types.go:43-102`
+
+## Oneshot Behavior
+
+The `vm-restart` action is marked as a oneshot action, meaning:
+- It executes once immediately
+- No recovery action is performed
+- The `duration` field is ignored
+- The experiment completes after the restart command is sent
+
+Source: `api/v1alpha1/azurechaos_types.go:28`
+
+## Finding LUN for Disk Detach
+
+To find the LUN of a data disk:
+
+```bash
+az vm show -g my-resource-group -n my-vm --query "storageProfile.dataDisks[]"
+```
+
+This will show all data disks with their LUN numbers.
+
+## Important Notes
+
+- Ensure your Azure credentials have appropriate permissions
+- Be cautious when targeting production VMs
+- The VM must be in a state that allows the requested operation
+- For `disk-detach`, ensure you're not detaching the OS disk (only data disks can be detached from running VMs)
+- You need both `diskName` and `lun` for disk detach operations
+- Test in non-production environments first
+- Azure API rate limits and quotas apply

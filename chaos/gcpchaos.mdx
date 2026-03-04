@@ -1,0 +1,201 @@
+---
+title: GCPChaos
+description: Inject failures into GCP Compute Engine instances and disks
+---
+
+GCPChaos allows you to simulate Google Cloud Platform infrastructure failures by manipulating Compute Engine instances and persistent disks through the GCP API.
+
+## Actions
+
+GCPChaos supports the following actions:
+
+- **node-stop**: Stop a Compute Engine instance
+- **node-reset**: Reset (hard reboot) a Compute Engine instance
+- **disk-loss**: Detach persistent disks from an instance
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The GCP chaos action to perform.
+  
+  **Options:** `node-stop`, `node-reset`, `disk-loss`
+  
+  **Default:** `node-stop`
+</ParamField>
+
+<ParamField path="spec.project" type="string" required>
+  GCP project ID where the resources are located.
+</ParamField>
+
+<ParamField path="spec.zone" type="string" required>
+  GCP zone where the instance is located (e.g., `us-central1-a`, `europe-west1-b`).
+</ParamField>
+
+<ParamField path="spec.instance" type="string" required>
+  Name of the Compute Engine instance to target.
+</ParamField>
+
+<ParamField path="spec.deviceNames" type="array">
+  List of disk device names to detach. Required when action is `disk-loss`.
+  
+  **Example:** `["disk-1", "disk-2"]`
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action. For `node-stop` and `disk-loss`, resources are affected for this duration then recovered. Not applicable to `node-reset` (oneshot action).
+</ParamField>
+
+<ParamField path="spec.secretName" type="string">
+  Name of the Kubernetes secret containing GCP service account credentials. If not specified, uses the default GCP credential chain.
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## GCP Credentials Setup
+
+You need to provide GCP credentials to Chaos Mesh.
+
+### Create Service Account Credentials
+
+1. Create a service account in your GCP project
+2. Grant the service account the following roles:
+   - `Compute Instance Admin (v1)` or custom role with these permissions:
+     - `compute.instances.stop`
+     - `compute.instances.start`
+     - `compute.instances.reset`
+     - `compute.instances.get`
+     - `compute.instances.attachDisk`
+     - `compute.instances.detachDisk`
+
+3. Create and download a JSON key file
+
+### Create Kubernetes Secret
+
+```bash
+kubectl create secret generic gcp-credentials \
+  --from-file=service-account.json=path/to/your-key.json \
+  -n chaos-mesh
+```
+
+Then reference it in your GCPChaos:
+
+```yaml
+spec:
+  secretName: gcp-credentials
+```
+
+### Alternative: Workload Identity (GKE)
+
+If running on GKE, you can use Workload Identity:
+
+1. Enable Workload Identity on your cluster
+2. Create a service account with necessary permissions
+3. Bind the Kubernetes service account to the GCP service account
+4. Don't specify `secretName` in the GCPChaos spec
+
+## Examples
+
+### Stop Compute Engine Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+metadata:
+  name: node-stop-example
+  namespace: chaos-mesh
+spec:
+  action: node-stop
+  project: my-gcp-project
+  zone: us-central1-a
+  instance: my-instance-name
+  secretName: gcp-credentials
+  duration: "5m"
+```
+
+This example stops the specified Compute Engine instance for 5 minutes, then automatically starts it again.
+
+### Reset Compute Engine Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+metadata:
+  name: node-reset-example
+  namespace: chaos-mesh
+spec:
+  action: node-reset
+  project: my-gcp-project
+  zone: europe-west1-b
+  instance: production-node-1
+  secretName: gcp-credentials
+```
+
+This example performs a hard reset (equivalent to pressing the reset button) of the instance. This is a oneshot action.
+
+### Detach Persistent Disks
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: GCPChaos
+metadata:
+  name: disk-loss-example
+  namespace: chaos-mesh
+spec:
+  action: disk-loss
+  project: my-gcp-project
+  zone: us-west1-a
+  instance: database-instance
+  deviceNames:
+    - data-disk-1
+    - data-disk-2
+  secretName: gcp-credentials
+  duration: "3m"
+```
+
+This example detaches the specified persistent disks from the instance for 3 minutes, then automatically reattaches them. The attachment info is stored in the status for recovery.
+
+## Implementation Details
+
+GCPChaos uses the GCP Compute Engine API to:
+1. Authenticate using service account credentials or Workload Identity
+2. Call GCP APIs to manipulate resources:
+   - `node-stop`: Calls Stop API, then Start after duration
+   - `node-reset`: Calls Reset API (oneshot)
+   - `disk-loss`: Calls DetachDisk API, stores attachment info in status, then AttachDisk after duration
+
+Source: `api/v1alpha1/gcpchaos_types.go:44-108`
+
+## Status Tracking
+
+For the `disk-loss` action, GCPChaos stores the original disk attachment information in the status:
+
+```yaml
+status:
+  attachedDiskStrings:
+    - '{"deviceName":"data-disk-1","source":"projects/my-project/zones/us-west1-a/disks/data-disk-1"}'
+```
+
+This ensures disks can be properly reattached in their original configuration.
+
+Source: `api/v1alpha1/gcpchaos_types.go:110-121`
+
+## Oneshot Behavior
+
+The `node-reset` action is marked as a oneshot action, meaning:
+- It executes once immediately
+- No recovery action is performed
+- The `duration` field is ignored
+- The experiment completes after the reset command is sent
+
+Source: `api/v1alpha1/gcpchaos_types.go:28`
+
+## Important Notes
+
+- Ensure your GCP credentials have appropriate permissions
+- Be cautious when targeting production instances
+- The instance must be in a state that allows the requested operation
+- For `disk-loss`, ensure you're not detaching the boot disk
+- Test in non-production environments first
+- GCP API rate limits apply

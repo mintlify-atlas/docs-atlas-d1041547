@@ -1,0 +1,444 @@
+---
+title: NetworkChaos API
+description: API reference for NetworkChaos CRD
+---
+
+`NetworkChaos` allows you to simulate various network failures including delays, packet loss, corruption, duplication, partitions, and bandwidth limitations.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the NetworkChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the NetworkChaos resource.
+</ParamField>
+
+## Spec Fields
+
+### NetworkChaosSpec
+
+<ParamField path="action" type="NetworkChaosAction" required>
+  Specific network chaos action.
+  
+  **Enum values:**
+  - `netem` - Combination of delay, loss, duplicate, corrupt
+  - `delay` - Add network delay
+  - `loss` - Drop packets
+  - `duplicate` - Duplicate packets
+  - `corrupt` - Corrupt packet data
+  - `partition` - Create network partition
+  - `bandwidth` - Limit bandwidth
+  
+  **Default:** `delay`
+</ParamField>
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Selector for targeting pods. Inherits all fields from `PodSelector` (inline). See [Common Types](/api/common-types#podselector).
+</ParamField>
+
+<ParamField path="mode" type="SelectorMode" required>
+  Mode to run chaos action: `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+</ParamField>
+
+<ParamField path="value" type="string">
+  Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action. Format: `"300ms"`, `"1.5h"`, `"2h45m"`
+  
+  Valid time units: `ns`, `us`, `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="device" type="string">
+  Network device to be affected (e.g., `eth0`). If not specified, the first non-loopback device is used.
+</ParamField>
+
+<ParamField path="direction" type="Direction" default="to">
+  Traffic direction to apply the action.
+  
+  **Enum values:**
+  - `to` - Traffic from source to target
+  - `from` - Traffic from target to source  
+  - `both` - Traffic in both directions
+  
+  Applies to `netem` and `partition` actions.
+</ParamField>
+
+<ParamField path="target" type="*PodSelector">
+  Target network peer. When specified, chaos only affects traffic between source and target.
+  
+  Applies to `netem` and `partition` actions.
+  
+  ```yaml
+  target:
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: database
+    mode: all
+  ```
+</ParamField>
+
+<ParamField path="targetDevice" type="string">
+  Network device to be affected in target scope.
+</ParamField>
+
+<ParamField path="externalTargets" type="[]string">
+  Network targets outside Kubernetes cluster.
+  
+  ```yaml
+  externalTargets:
+    - 8.8.8.8
+    - example.com
+  ```
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed.
+</ParamField>
+
+### TcParameter (inline fields)
+
+Traffic control parameters embedded in NetworkChaosSpec.
+
+<ParamField path="delay" type="*DelaySpec">
+  Delay specification (for `delay` and `netem` actions).
+</ParamField>
+
+<ParamField path="loss" type="*LossSpec">
+  Packet loss specification (for `loss` and `netem` actions).
+</ParamField>
+
+<ParamField path="duplicate" type="*DuplicateSpec">
+  Packet duplication specification (for `duplicate` and `netem` actions).
+</ParamField>
+
+<ParamField path="corrupt" type="*CorruptSpec">
+  Packet corruption specification (for `corrupt` and `netem` actions).
+</ParamField>
+
+<ParamField path="bandwidth" type="*BandwidthSpec">
+  Bandwidth limitation specification (for `bandwidth` action).
+</ParamField>
+
+<ParamField path="rate" type="*RateSpec">
+  Rate control specification.
+</ParamField>
+
+## Network Action Specifications
+
+### DelaySpec
+
+Defines network delay parameters.
+
+<ParamField path="latency" type="string" required>
+  Base latency to add. Format: `"10ms"`, `"100ms"`, `"1s"`
+  
+  **Pattern:** `^[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$`
+  
+  ```yaml
+  delay:
+    latency: "100ms"
+  ```
+</ParamField>
+
+<ParamField path="correlation" type="string" default="0">
+  Correlation between successive delay values (0-100). Controls how much the previous delay affects the current one.
+  
+  ```yaml
+  correlation: "50"  # 50% correlation
+  ```
+</ParamField>
+
+<ParamField path="jitter" type="string" default="0ms">
+  Random variation in delay. Format: `"10ms"`
+  
+  **Pattern:** `^[0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h)$`
+  
+  ```yaml
+  jitter: "10ms"  # ±10ms variation
+  ```
+</ParamField>
+
+<ParamField path="reorder" type="*ReorderSpec">
+  Packet reordering configuration.
+</ParamField>
+
+### ReorderSpec
+
+<ParamField path="reorder" type="string" required>
+  Percentage of packets to reorder (0-100).
+</ParamField>
+
+<ParamField path="correlation" type="string" default="0">
+  Correlation for reordering.
+</ParamField>
+
+<ParamField path="gap" type="int" required>
+  Distance between reordered packets.
+</ParamField>
+
+### LossSpec
+
+Defines packet loss parameters.
+
+<ParamField path="loss" type="string" required>
+  Percentage of packets to drop (0-100).
+  
+  ```yaml
+  loss:
+    loss: "25"  # Drop 25% of packets
+  ```
+</ParamField>
+
+<ParamField path="correlation" type="string" default="0">
+  Correlation between successive loss events.
+</ParamField>
+
+### DuplicateSpec
+
+Defines packet duplication parameters.
+
+<ParamField path="duplicate" type="string" required>
+  Percentage of packets to duplicate (0-100).
+  
+  ```yaml
+  duplicate:
+    duplicate: "10"  # Duplicate 10% of packets
+  ```
+</ParamField>
+
+<ParamField path="correlation" type="string" default="0">
+  Correlation between successive duplication events.
+</ParamField>
+
+### CorruptSpec
+
+Defines packet corruption parameters.
+
+<ParamField path="corrupt" type="string" required>
+  Percentage of packets to corrupt (0-100).
+  
+  ```yaml
+  corrupt:
+    corrupt: "5"  # Corrupt 5% of packets
+  ```
+</ParamField>
+
+<ParamField path="correlation" type="string" default="0">
+  Correlation between successive corruption events.
+</ParamField>
+
+### BandwidthSpec
+
+Defines bandwidth limitation parameters using Token Bucket Filter.
+
+<ParamField path="rate" type="string" required>
+  Speed limit. Units: bit, kbit, mbit, gbit, tbit, bps, kbps, mbps, gbps, tbps
+  
+  Note: `bps` means bytes per second.
+  
+  ```yaml
+  bandwidth:
+    rate: "1mbps"  # Limit to 1 megabit per second
+  ```
+</ParamField>
+
+<ParamField path="limit" type="uint32" required>
+  Number of bytes that can be queued waiting for tokens.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  limit: 1000
+  ```
+</ParamField>
+
+<ParamField path="buffer" type="uint32" required>
+  Maximum bytes that tokens can be available for instantaneously.
+  
+  **Minimum:** `1`
+  
+  ```yaml
+  buffer: 1000
+  ```
+</ParamField>
+
+<ParamField path="peakrate" type="*uint64">
+  Maximum depletion rate of the bucket. Only necessary for perfect millisecond timescale shaping.
+  
+  **Minimum:** `0`
+</ParamField>
+
+<ParamField path="minburst" type="*uint32">
+  Size of the peakrate bucket. Should be set to MTU for perfect accuracy.
+  
+  **Minimum:** `0`
+</ParamField>
+
+### RateSpec
+
+<ParamField path="rate" type="string" required>
+  Speed limit with units (bit, kbit, mbit, gbit, tbit, bps, kbps, mbps, gbps, tbps).
+</ParamField>
+
+## Status Fields
+
+### NetworkChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current conditions. See [ChaosStatus](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state.
+</ResponseField>
+
+<ResponseField name="instances" type="map[string]int64">
+  PodNetworkChaos generation for each affected pod.
+</ResponseField>
+
+## Examples
+
+### Network Delay
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay
+  namespace: chaos-mesh
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: web
+  delay:
+    latency: "100ms"
+    jitter: "10ms"
+    correlation: "50"
+  duration: "30s"
+```
+
+### Packet Loss
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-loss
+spec:
+  action: loss
+  mode: fixed
+  value: "2"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      tier: backend
+  loss:
+    loss: "25"
+    correlation: "25"
+  duration: "1m"
+```
+
+### Network Partition
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition
+spec:
+  action: partition
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: frontend
+  direction: both
+  target:
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        app: database
+    mode: all
+  duration: "1m"
+```
+
+### Bandwidth Limit
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: bandwidth-limit
+spec:
+  action: bandwidth
+  mode: one
+  selector:
+    namespaces:
+      - default
+  bandwidth:
+    rate: "1mbps"
+    limit: 20000
+    buffer: 10000
+  duration: "2m"
+```
+
+### Combined Netem Actions
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: netem-combined
+spec:
+  action: netem
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: api
+  delay:
+    latency: "50ms"
+    jitter: "10ms"
+  loss:
+    loss: "10"
+  duplicate:
+    duplicate: "5"
+  corrupt:
+    corrupt: "2"
+  duration: "1m"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="IOChaos API" icon="hard-drive" href="/api/iochaos-api">
+    File system and I/O fault injection
+  </Card>
+  
+  <Card title="Common Types" icon="shapes" href="/api/common-types">
+    Shared types and selectors
+  </Card>
+</CardGroup>

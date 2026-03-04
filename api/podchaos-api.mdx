@@ -1,0 +1,235 @@
+---
+title: PodChaos API
+description: API reference for PodChaos CRD
+---
+
+`PodChaos` allows you to simulate pod-level failures including killing pods, killing containers, or making pods fail temporarily.
+
+## API Version and Kind
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+```
+
+## Metadata
+
+Standard Kubernetes object metadata.
+
+<ParamField path="metadata.name" type="string" required>
+  Name of the PodChaos resource.
+</ParamField>
+
+<ParamField path="metadata.namespace" type="string">
+  Namespace of the PodChaos resource. Defaults to `default`.
+</ParamField>
+
+## Spec Fields
+
+<ParamField path="spec" type="PodChaosSpec" required>
+  Defines the behavior of the pod chaos experiment.
+</ParamField>
+
+### PodChaosSpec
+
+<ParamField path="action" type="PodChaosAction" required>
+  Specific pod chaos action to perform.
+  
+  **Enum values:**
+  - `pod-kill` - Kill the entire pod
+  - `pod-failure` - Make the pod unavailable for a duration
+  - `container-kill` - Kill a specific container in the pod
+  
+  **Default:** `pod-kill`
+</ParamField>
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Selector for targeting pods. See [ContainerSelector in Common Types](/api/common-types#containerselector).
+  
+  Inherits all fields from `ContainerSelector` (inline), including:
+  - Pod selection criteria
+  - Mode (one/all/fixed/fixed-percent/random-max-percent)
+  - Value (for fixed modes)
+  - Container names (for container-kill action)
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration of the chaos action. Required when action is `pod-failure`.
+  
+  A duration string with format like `"300ms"`, `"1.5h"`, or `"2h45m"`.
+  
+  Valid time units: `ns`, `us` (µs), `ms`, `s`, `m`, `h`
+  
+  ```yaml
+  duration: "30s"
+  ```
+</ParamField>
+
+<ParamField path="gracePeriod" type="int64" default="0">
+  Grace period in seconds before the pod is deleted (for `pod-kill` action).
+  
+  Must be a non-negative integer. Default value of zero indicates delete immediately.
+  
+  **Minimum:** `0`
+  
+  ```yaml
+  gracePeriod: 30  # Wait 30 seconds before force deletion
+  ```
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where the chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Status Fields
+
+<ResponseField name="status" type="PodChaosStatus">
+  Current status of the chaos experiment.
+</ResponseField>
+
+### PodChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions. See [ChaosStatus in Common Types](/api/common-types#chaosstatus).
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Last known experiment state including desired phase and container records.
+</ResponseField>
+
+## Action Details
+
+### pod-kill
+
+Deletes the entire pod. Kubernetes will typically recreate it based on the controller (Deployment, StatefulSet, etc.).
+
+- **One-shot:** Yes (chaos completes after killing the pod)
+- **Requires duration:** No
+- **Uses ContainerSelector:** No (uses PodSelector)
+
+**Example:**
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-example
+  namespace: chaos-mesh
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: nginx
+  gracePeriod: 0
+```
+
+### pod-failure
+
+Makes the pod fail for a specified duration. The pod will not be available during this time.
+
+- **One-shot:** No (chaos lasts for specified duration)
+- **Requires duration:** Yes
+- **Uses ContainerSelector:** No (uses PodSelector)
+
+**Example:**
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-example
+  namespace: chaos-mesh
+spec:
+  action: pod-failure
+  mode: fixed-percent
+  value: "50"
+  duration: "30s"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: web-server
+```
+
+### container-kill
+
+Kills a specific container within the pod. The container runtime will typically restart it.
+
+- **One-shot:** Yes (chaos completes after killing the container)
+- **Requires duration:** No
+- **Uses ContainerSelector:** Yes
+
+**Example:**
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: container-kill-example
+  namespace: chaos-mesh
+spec:
+  action: container-kill
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: myapp
+  containerNames:
+    - main
+    - sidecar
+```
+
+## Complete Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-chaos-example
+  namespace: chaos-mesh
+  labels:
+    app: chaos-test
+spec:
+  action: pod-kill
+  mode: fixed
+  value: "2"
+  selector:
+    namespaces:
+      - default
+      - production
+    labelSelectors:
+      app: myapp
+      tier: backend
+    podPhaseSelectors:
+      - Running
+  gracePeriod: 10
+  remoteCluster: ""
+```
+
+## Pause Annotation
+
+You can pause a PodChaos experiment by adding an annotation:
+
+```yaml
+metadata:
+  annotations:
+    experiment.chaos-mesh.org/pause: "true"
+```
+
+Set to `"false"` or remove the annotation to resume.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Common Types" icon="shapes" href="/api/common-types">
+    Learn about selectors and shared types
+  </Card>
+  
+  <Card title="NetworkChaos API" icon="network-wired" href="/api/networkchaos-api">
+    Network fault injection
+  </Card>
+</CardGroup>

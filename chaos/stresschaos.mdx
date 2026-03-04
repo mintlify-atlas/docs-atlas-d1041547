@@ -1,0 +1,282 @@
+---
+title: StressChaos
+description: Generate CPU and memory stress on pods
+---
+
+StressChaos allows you to simulate resource pressure by generating CPU and memory stress on target pods to test application behavior under resource constraints.
+
+## Supported Stressors
+
+StressChaos supports two primary types of resource stress:
+
+- **CPU Stress**: Generate CPU load to simulate high CPU usage
+- **Memory Stress**: Consume memory to simulate memory pressure
+
+You can use one or both stressors simultaneously.
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: burn-cpu
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  stressors:
+    cpu:
+      workers: 1
+      load: 100
+  duration: "30s"
+```
+
+## Spec Fields
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+<ParamField path="containerNames" type="string[]">
+  List of container names to inject stress into. If not set, the first container will be injected.
+</ParamField>
+
+<ParamField path="stressors" type="Stressors">
+  Stressor configuration. At least one stressor (CPU or memory) must be specified.
+
+  <Expandable title="Stressors fields">
+    <ParamField path="cpu" type="CPUStressor">
+      CPU stress configuration
+      
+      <Expandable title="CPUStressor fields">
+        <ParamField path="workers" type="integer" required>
+          Number of CPU stress workers (maximum: 8192)
+        </ParamField>
+
+        <ParamField path="load" type="integer">
+          CPU load percentage per worker (0-100). 0 is effectively a sleep (no load), 100 is full loading.
+        </ParamField>
+
+        <ParamField path="options" type="string[]">
+          Additional stress-ng command line options
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="memory" type="MemoryStressor">
+      Memory stress configuration
+      
+      <Expandable title="MemoryStressor fields">
+        <ParamField path="workers" type="integer" required>
+          Number of memory stress workers (maximum: 8192)
+        </ParamField>
+
+        <ParamField path="size" type="string">
+          Amount of memory to consume per worker. Can be specified as:
+          - Percentage of total available memory (e.g., "50%")
+          - Absolute value with units: B, KB/KiB, MB/MiB, GB/GiB, TB/TiB (e.g., "10GB")
+          - If not specified, defaults to total available memory
+        </ParamField>
+
+        <ParamField path="oomScoreAdj" type="integer" default="0">
+          OOM killer score adjustment (-1000 to 1000). Lower values make the process less likely to be killed.
+        </ParamField>
+
+        <ParamField path="options" type="string[]">
+          Additional stress-ng command line options
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="stressngStressors" type="string">
+  Experimental feature: Advanced stress-ng stressors in stress-ng dialect. When both `stressngStressors` and `stressors` are defined, `stressngStressors` takes precedence. See `man stress-ng` for available options.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### CPU Stress
+
+Generate 100% CPU load on one worker:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: burn-cpu
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  stressors:
+    cpu:
+      workers: 1
+      load: 100
+      options: ["--cpu 2", "--timeout 600", "--hdd 1"]
+  duration: "30s"
+```
+
+### Memory Stress
+
+Consume 10GB of memory:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: pod-oom
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  stressors:
+    memory:
+      workers: 1
+      size: 10GB
+      oomScoreAdj: -1000
+  duration: "30s"
+```
+
+### Combined CPU and Memory Stress
+
+Stress both CPU and memory simultaneously:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: combined-stress
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  stressors:
+    cpu:
+      workers: 2
+      load: 80
+    memory:
+      workers: 1
+      size: 2GB
+  duration: "60s"
+```
+
+### Memory Pressure with Percentage
+
+Consume 50% of available memory:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: memory-percentage
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  stressors:
+    memory:
+      workers: 1
+      size: "50%"
+  duration: "120s"
+```
+
+## Use Cases
+
+### Testing Resource Limits
+
+Use StressChaos to verify that Kubernetes resource limits (CPU and memory) are correctly configured and enforced.
+
+### OOM Testing
+
+Generate memory pressure to test how your application handles out-of-memory conditions and verify OOM killer behavior.
+
+### Performance Under Load
+
+Simulate high CPU usage to test application performance degradation and ensure critical paths remain responsive.
+
+### Auto-scaling Validation
+
+Trigger resource stress to verify that horizontal and vertical pod autoscaling mechanisms work as expected.
+
+### Resource Contention
+
+Test how your application behaves when competing for resources with other workloads.
+
+## Best Practices
+
+1. **Worker Count**: Start with 1-2 workers and increase gradually to understand impact
+2. **CPU Load**: Use `load` parameter to create partial CPU stress (e.g., 50% instead of 100%) for more realistic scenarios
+3. **Memory Size**: Be careful with memory stress - set appropriate values to avoid node-level issues
+4. **OOM Score**: Use `oomScoreAdj: -1000` to prevent stress processes from being killed first
+5. **Resource Limits**: Ensure target pods have resource limits defined to contain the stress impact
+6. **Duration**: Use shorter durations initially (30s-60s) to understand system behavior
+7. **Monitor Impact**: Watch for:
+   - Pod evictions
+   - Node memory/CPU pressure
+   - Application performance metrics
+   - Kubernetes events
+8. **Container Selection**: When using multi-container pods, specify `containerNames` to target the right container
+9. **Mode Selection**: Start with `mode: one` before affecting multiple pods
+
+## Advanced Usage
+
+### Using stress-ng Options
+
+You can pass additional stress-ng options for fine-grained control:
+
+```yaml
+stressors:
+  cpu:
+    workers: 4
+    load: 75
+    options:
+      - "--cpu-method matrixprod"
+      - "--cpu-ops 10000"
+  memory:
+    workers: 2
+    options:
+      - "--vm-method flip"
+      - "--vm-hang 1"
+```
+
+### Experimental stressngStressors
+
+For advanced use cases, use raw stress-ng dialect:
+
+```yaml
+stressngStressors: "--cpu 4 --cpu-load 75 --io 2 --vm 1 --vm-bytes 1G"
+```
+
+This feature provides access to all stress-ng stressors but may be retired in future releases.
+
+## Notes
+
+- StressChaos uses stress-ng under the hood to generate resource stress
+- CPU stress uses the sqrt method by default with CPU load slicing for better accuracy
+- Memory stress allocates virtual memory and actively uses it to create pressure
+- The chaos daemon runs stress processes inside target containers
+- Maximum of 8192 workers can be specified per stressor
+- When `stressngStressors` is specified, it overrides the `stressors` field
+- Resource stress can impact the entire node if not properly contained with resource limits
+- Always test in non-production environments first to understand the impact

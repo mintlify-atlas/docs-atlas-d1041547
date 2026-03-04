@@ -1,0 +1,491 @@
+---
+title: RBAC Configuration
+description: Configure Role-Based Access Control for Chaos Mesh
+---
+
+Chaos Mesh uses Kubernetes RBAC to control access to chaos experiments and infrastructure resources. This guide covers all RBAC roles, permissions, and configuration options.
+
+## Overview
+
+Chaos Mesh creates several service accounts and roles:
+
+- **chaos-controller-manager**: Core controller service account
+- **chaos-daemon**: DaemonSet with elevated privileges for fault injection
+- **chaos-dashboard**: Web UI service account
+- **chaos-dns-server**: DNS chaos service account
+
+## Installation Modes
+
+Chaos Mesh supports two RBAC modes:
+
+### Cluster-Scoped Mode (Default)
+
+Manages chaos experiments across all namespaces:
+
+```yaml
+clusterScoped: true
+
+rbac:
+  create: true
+```
+
+In this mode:
+- Uses `ClusterRole` and `ClusterRoleBinding`
+- Can inject chaos into any namespace
+- Requires cluster-admin privileges to install
+
+### Namespace-Scoped Mode
+
+Restricts chaos experiments to a specific namespace:
+
+```yaml
+clusterScoped: false
+
+rbac:
+  create: true
+
+controllerManager:
+  targetNamespace: "my-app-namespace"
+```
+
+In this mode:
+- Uses `Role` and `RoleBinding`
+- Can only affect pods in `targetNamespace`
+- More restrictive security posture
+
+Relevant code: `helm/chaos-mesh/values.yaml:25-31`
+
+## Controller Manager RBAC
+
+The controller manager requires three sets of permissions:
+
+### 1. Target Namespace Permissions
+
+Permissions for namespaces where chaos is injected:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-controller-manager-target-namespace
+rules:
+  # Pod operations
+  - apiGroups: [""]
+    resources: ["pods", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "delete", "update", "patch"]
+  
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create"]
+  
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  
+  # Event recording
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["patch", "create", "watch", "list", "get"]
+  
+  # Chaos Mesh resources
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["*"]
+    verbs: ["*"]
+```
+
+Source: `helm/chaos-mesh/templates/controller-manager-rbac.yaml:32-68`
+
+### 2. Cluster-Level Permissions
+
+Read-only access to cluster resources:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-controller-manager-cluster-level
+rules:
+  # Node and storage resources
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - persistentvolumes
+      - persistentvolumeclaims
+      - namespaces  # Only if clusterScoped=true
+      - services    # Only if clusterScoped=true
+    verbs: ["get", "list", "watch"]
+  
+  # Authorization checks
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+```
+
+Source: `helm/chaos-mesh/templates/controller-manager-rbac.yaml:71-92`
+
+### 3. Control Plane Permissions
+
+Permissions within the Chaos Mesh namespace:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-controller-manager-control-plane
+  namespace: chaos-mesh
+rules:
+  - apiGroups: [""]
+    resources: ["services", "secrets"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+  
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["*"]
+  
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["*"]
+```
+
+Source: `helm/chaos-mesh/templates/controller-manager-rbac.yaml:95-122`
+
+## Chaos Daemon RBAC
+
+The chaos-daemon runs with minimal RBAC permissions but requires elevated Linux capabilities:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-daemon
+  namespace: chaos-mesh
+```
+
+Source: `helm/chaos-mesh/templates/chaos-daemon-rbac.yaml:17-28`
+
+### Pod Security Policy (Legacy)
+
+For clusters using PodSecurityPolicy:
+
+```yaml
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: chaos-daemon
+spec:
+  privileged: true  # Or false with specific capabilities
+  
+  allowedCapabilities:
+    - SYS_PTRACE
+    - NET_ADMIN
+    - NET_RAW
+    - MKNOD
+    - SYS_CHROOT
+    - SYS_ADMIN
+    - KILL
+    - IPC_LOCK
+  
+  allowedHostPaths:
+    - pathPrefix: /var/run/docker.sock
+      readOnly: false
+    - pathPrefix: /sys
+      readOnly: false
+    - pathPrefix: /lib/modules
+      readOnly: false
+  
+  hostNetwork: true
+  hostIPC: true
+  hostPID: true
+```
+
+Source: `helm/chaos-mesh/templates/chaos-daemon-rbac.yaml:69-133`
+
+Enable with:
+
+```yaml
+chaosDaemon:
+  podSecurityPolicy: true
+```
+
+## Dashboard RBAC
+
+The dashboard requires permissions to list resources and validate authorization:
+
+### Cluster-Level Role
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-dashboard-cluster-level
+rules:
+  # List namespaces for UI hints
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  
+  # Validate user permissions
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+```
+
+Source: `helm/chaos-mesh/templates/chaos-dashboard-rbac.yaml:27-49`
+
+### Target Namespace Role
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-dashboard-target-namespace
+rules:
+  # Pod listing for selector hints
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  
+  # Event viewing
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+  
+  # Chaos Mesh resources
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["*"]
+    verbs: ["*"]
+```
+
+Source: `helm/chaos-mesh/templates/chaos-dashboard-rbac.yaml:70-101`
+
+## User RBAC Configuration
+
+### Creating Chaos Engineers
+
+Grant users permission to create chaos experiments:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-engineer
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-engineer
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chaos-mesh-chaos-controller-manager-target-namespace
+subjects:
+  - kind: ServiceAccount
+    name: chaos-engineer
+    namespace: default
+```
+
+Generate token for dashboard:
+
+```bash
+kubectl create token chaos-engineer -n default --duration=24h
+```
+
+### Read-Only Access
+
+Create a role for viewing chaos experiments:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-viewer
+  namespace: default
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  
+  - apiGroups: [""]
+    resources: ["pods", "events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-viewer
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chaos-viewer
+subjects:
+  - kind: User
+    name: viewer@example.com
+```
+
+### Granular Permissions
+
+Create roles for specific chaos types:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: network-chaos-only
+  namespace: default
+rules:
+  - apiGroups: ["chaos-mesh.org"]
+    resources:
+      - networkchaos
+      - dnschaos
+      - httpchaos
+    verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+```
+
+## Namespace Filtering
+
+Restrict chaos injection to annotated namespaces:
+
+```yaml
+controllerManager:
+  enableFilterNamespace: true
+```
+
+Then annotate allowed namespaces:
+
+```bash
+kubectl annotate namespace production chaos-mesh.org/inject=enabled
+```
+
+Only pods in annotated namespaces can be targeted by chaos experiments.
+
+Relevant code: `pkg/config/controller.go:78-80`
+
+## Service Account Configuration
+
+### Disable Default Service Accounts
+
+If managing service accounts externally:
+
+```yaml
+controllerManager:
+  serviceAccountCreate: false
+  serviceAccount: "my-custom-sa"
+```
+
+### Add Annotations
+
+For cloud provider integration (e.g., AWS IAM roles):
+
+```yaml
+controllerManager:
+  serviceAccountAnnotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/chaos-controller"
+
+chaosDaemon:
+  serviceAccountAnnotations:
+    eks.amazonaws.com/role-arn: "arn:aws:iam::123456789012:role/chaos-daemon"
+```
+
+Relevant code: `helm/chaos-mesh/values.yaml:62-65`
+
+## Required Permissions by Chaos Type
+
+### Pod Chaos
+
+- `pods`: get, list, watch, delete
+- `pods/log`: get
+
+### Network Chaos
+
+- `pods`: get, list, watch, update, patch
+- `services`: get, list, watch (if clusterScoped)
+
+### IO Chaos
+
+- `pods`: get, list, watch, update, patch
+- `persistentvolumeclaims`: get, list, watch
+
+### Kernel Chaos
+
+- `pods`: get, list, watch
+- `nodes`: get, list, watch
+
+### Time Chaos
+
+- `pods`: get, list, watch
+
+### Stress Chaos
+
+- `pods`: get, list, watch
+
+### DNS Chaos
+
+- `pods`: get, list, watch, update, patch
+- `configmaps`: create, update, patch, delete
+
+### HTTP Chaos
+
+- `pods`: get, list, watch, update, patch
+
+## Troubleshooting RBAC
+
+### Check Permissions
+
+```bash
+# Check if service account can create chaos
+kubectl auth can-i create podchaos.chaos-mesh.org \
+  --as=system:serviceaccount:default:chaos-engineer \
+  --namespace=default
+
+# List all permissions
+kubectl describe clusterrole chaos-mesh-chaos-controller-manager-target-namespace
+```
+
+### Common Issues
+
+**Error: "forbidden: User X cannot create resource Y"**
+
+Solution: User needs appropriate RoleBinding or ClusterRoleBinding
+
+**Error: "cannot list resource 'namespaces' at the cluster scope"**
+
+Solution: In namespace-scoped mode, users don't need cluster-level access. Set `clusterScoped: false`.
+
+**Error: "admission webhook denied the request"**
+
+Solution: Check authorization webhook logs:
+
+```bash
+kubectl logs -n chaos-mesh -l app.kubernetes.io/component=controller-manager | grep validate-auth
+```
+
+## Best Practices
+
+1. **Use Namespace-Scoped Mode** when possible for defense in depth
+2. **Enable RBAC creation** with `rbac.create: true`
+3. **Implement least privilege** - grant only required permissions
+4. **Use service account tokens** for dashboard access instead of disabling security mode
+5. **Annotate namespaces** with `enableFilterNamespace` for additional protection
+6. **Audit regularly** using `kubectl auth can-i` to verify permissions
+7. **Rotate tokens** periodically for dashboard users
+
+## Related Configuration
+
+- See [Authorization](/security/authorization) for security mode and validation details
+- See [Best Practices](/security/best-practices) for production security recommendations

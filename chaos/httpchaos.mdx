@@ -1,0 +1,395 @@
+---
+title: HTTPChaos
+description: Inject HTTP failures and manipulate HTTP requests/responses
+---
+
+HTTPChaos allows you to intercept and manipulate HTTP traffic to test how your application handles HTTP-level failures, delays, and data corruption.
+
+## Supported Actions
+
+HTTPChaos supports multiple HTTP manipulation actions:
+
+- **abort**: Abort HTTP connections
+- **delay**: Add latency to HTTP requests or responses
+- **replace**: Replace HTTP request/response content (path, method, status code, body, headers, queries)
+- **patch**: Patch/append HTTP content (body, headers, queries)
+
+## Configuration
+
+### Basic Example
+
+```yaml
+kind: HTTPChaos
+apiVersion: chaos-mesh.org/v1alpha1
+metadata:
+  name: nginx-http-patch
+spec:
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: nginx
+  mode: all
+  target: Response
+  patch:
+    body:
+      type: JSON
+      value: '{"status":"Failed","reason":"hacked by Chaos Mesh"}'
+  port: 80
+  path: '*'
+```
+
+## Spec Fields
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="target" type="string" required>
+  Specifies whether to target requests or responses:
+  - `Request`: Manipulate HTTP requests
+  - `Response`: Manipulate HTTP responses
+</ParamField>
+
+<ParamField path="port" type="int32" required>
+  Target port to proxy and inject chaos
+</ParamField>
+
+<ParamField path="path" type="string">
+  URI path pattern to match. Supports wildcards (e.g., `"/api/*"`, `"*"`)
+</ParamField>
+
+<ParamField path="method" type="string">
+  HTTP method to match (e.g., `GET`, `POST`, `PUT`, `DELETE`)
+</ParamField>
+
+<ParamField path="code" type="int32">
+  HTTP status code to match (only applicable when target is Response). Example: `200`, `404`, `500`
+</ParamField>
+
+<ParamField path="request_headers" type="map[string]string">
+  Request headers to match. Key-value pairs of header name and value.
+</ParamField>
+
+<ParamField path="response_headers" type="map[string]string">
+  Response headers to match. Key-value pairs of header name and value.
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+### Action Fields
+
+<ParamField path="abort" type="bool">
+  If true, abort the HTTP connection
+</ParamField>
+
+<ParamField path="delay" type="string">
+  Delay to add to HTTP request/response. Format: "300ms", "2s". Valid units: ns, us, ms, s, m, h.
+</ParamField>
+
+<ParamField path="replace" type="ReplaceActions">
+  Replace HTTP request/response content
+
+  <Expandable title="ReplaceActions fields">
+    <ParamField path="path" type="string">
+      Replace URI path (Request only)
+    </ParamField>
+
+    <ParamField path="method" type="string">
+      Replace HTTP method (Request only). Example: `"POST"`
+    </ParamField>
+
+    <ParamField path="code" type="int32">
+      Replace HTTP status code (Response only). Example: `500`
+    </ParamField>
+
+    <ParamField path="body" type="[]byte">
+      Replace HTTP body content
+    </ParamField>
+
+    <ParamField path="queries" type="map[string]string">
+      Replace URI query parameters (Request only). Example: `{"foo": "unknown"}` changes `/?foo=bar` to `/?foo=unknown`
+    </ParamField>
+
+    <ParamField path="headers" type="map[string]string">
+      Replace HTTP headers. Key-value pairs of header name and value.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="patch" type="PatchActions">
+  Patch/append HTTP request/response content
+
+  <Expandable title="PatchActions fields">
+    <ParamField path="body" type="PatchBodyAction">
+      Patch HTTP body
+      
+      <Expandable title="PatchBodyAction fields">
+        <ParamField path="type" type="string" required>
+          Patch type. Currently only supports `"JSON"` (merge patch JSON per RFC 7396)
+        </ParamField>
+
+        <ParamField path="value" type="string" required>
+          JSON patch content
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="queries" type="[][]string">
+      Append URI query parameters (Request only). Example: `[["foo", "bar"], ["foo", "unknown"]]`
+    </ParamField>
+
+    <ParamField path="headers" type="[][]string">
+      Append HTTP headers. Example: `[["Set-Cookie", "<one cookie>"], ["Set-Cookie", "<another cookie>"]]`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="tls" type="TLSConfig">
+  TLS configuration for HTTPS traffic
+
+  <Expandable title="TLSConfig fields">
+    <ParamField path="secretName" type="string" required>
+      Name of Kubernetes secret containing TLS certificates
+    </ParamField>
+
+    <ParamField path="secretNamespace" type="string" required>
+      Namespace of the secret
+    </ParamField>
+
+    <ParamField path="certName" type="string" required>
+      Key name for certificate in secret (e.g., `"tls.crt"`)
+    </ParamField>
+
+    <ParamField path="keyName" type="string" required>
+      Key name for private key in secret (e.g., `"tls.key"`)
+    </ParamField>
+
+    <ParamField path="caName" type="string">
+      Key name for CA certificate in secret (e.g., `"ca.crt"`)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### Patch Response Body
+
+Replace JSON response with custom content:
+
+```yaml
+kind: HTTPChaos
+apiVersion: chaos-mesh.org/v1alpha1
+metadata:
+  name: nginx-http-patch
+spec:
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: nginx
+  mode: all
+  target: Response
+  patch:
+    body:
+      type: JSON
+      value: '{"status":"Failed","reason":"hacked by Chaos Mesh"}'
+  port: 80
+  path: '*'
+```
+
+### Add Response Delay
+
+Add 2 second delay to all responses:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-delay
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: web-service
+  target: Response
+  port: 8080
+  delay: "2s"
+  duration: "60s"
+```
+
+### Abort Connections
+
+Abort HTTP connections to specific endpoint:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-abort
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: api-service
+  target: Request
+  port: 8080
+  path: "/api/v1/users"
+  method: POST
+  abort: true
+  duration: "120s"
+```
+
+### Replace Status Code
+
+Change successful responses to errors:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-error-injection
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: web-service
+  target: Response
+  port: 80
+  code: 200
+  replace:
+    code: 500
+    body: "Internal Server Error"
+  duration: "60s"
+```
+
+### Modify Request Headers
+
+Add or replace request headers:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-header-injection
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: api-gateway
+  target: Request
+  port: 8080
+  patch:
+    headers:
+      - ["X-Chaos", "true"]
+      - ["X-Custom-Header", "test-value"]
+  duration: "300s"
+```
+
+### Modify Query Parameters
+
+Replace query parameters:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-query-replace
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: search-service
+  target: Request
+  port: 8080
+  path: "/search"
+  replace:
+    queries:
+      limit: "10"
+      offset: "0"
+  duration: "180s"
+```
+
+### Filter by Request Headers
+
+Target only requests with specific headers:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: http-header-filter
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: api-service
+  target: Request
+  port: 8080
+  request_headers:
+    Authorization: "Bearer test-token"
+  delay: "1s"
+  duration: "120s"
+```
+
+## Use Cases
+
+### API Error Handling
+
+Test how your application handles HTTP errors by replacing status codes or aborting connections.
+
+### Latency Testing
+
+Simulate slow API responses to test timeout handling and user experience under high latency.
+
+### Data Corruption
+
+Use patch or replace actions to inject malformed responses and test input validation.
+
+### Authentication Testing
+
+Modify authentication headers or tokens to test authorization and authentication error handling.
+
+### Rate Limiting
+
+Combine with delay to simulate rate-limited APIs and test backoff/retry logic.
+
+## Best Practices
+
+1. **Target Specificity**: Use path, method, and header filters to target specific endpoints
+2. **Start with Non-Critical Endpoints**: Test on less critical API endpoints first
+3. **Use Appropriate Target**: 
+   - `Request` for testing client-side error handling
+   - `Response` for testing server response processing
+4. **Monitor Application Behavior**: Watch for:
+   - Timeout errors
+   - Retry loops
+   - Circuit breaker activation
+   - Error logging
+5. **TLS Configuration**: For HTTPS services, properly configure TLS secrets
+6. **Body Patching**: When using JSON patch, ensure the patch is valid according to RFC 7396
+7. **Header Format**: Use arrays of arrays for patch operations to support multiple headers with same name
+8. **Realistic Delays**: Use delays that match real-world scenarios (100ms-2s for API calls)
+9. **Test Error Propagation**: Verify errors are properly propagated through your service mesh or API gateway
+
+## Notes
+
+- HTTPChaos uses a transparent proxy (tproxy) to intercept HTTP traffic
+- The chaos daemon runs a proxy process inside the target pod's network namespace
+- Only HTTP/1.x traffic is supported (HTTP/2 support may vary)
+- TLS inspection requires proper certificate configuration via the `tls` field
+- Path matching supports wildcards but not full regex
+- Multiple HTTPChaos experiments on the same pod/port can conflict
+- The proxy adds minimal overhead but may affect high-throughput services
+- Body replacement happens in memory - very large bodies may impact performance
+- Query parameter replacement replaces the entire query string, patch appends to it

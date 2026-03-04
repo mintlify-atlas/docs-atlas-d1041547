@@ -1,0 +1,391 @@
+---
+title: Dashboard
+description: Web-based UI for managing and monitoring Chaos Mesh experiments
+---
+
+## Overview
+
+The Chaos Dashboard provides a web-based interface for creating, managing, and monitoring chaos experiments, workflows, and schedules. It offers an intuitive alternative to kubectl commands and YAML manifests.
+
+## Accessing the Dashboard
+
+### Port Forward Method
+
+The most common way to access the dashboard in development and testing environments:
+
+<CodeGroup>
+```bash Port Forward
+kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+```
+
+```bash Custom Port
+kubectl port-forward -n chaos-mesh svc/chaos-dashboard 8080:2333
+```
+</CodeGroup>
+
+Then open your browser to:
+- Default: http://localhost:2333
+- Custom port: http://localhost:8080
+
+### Service Exposure
+
+For production environments, expose the dashboard through a LoadBalancer or Ingress:
+
+<CodeGroup>
+```yaml LoadBalancer
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-dashboard-external
+  namespace: chaos-mesh
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/component: chaos-dashboard
+  ports:
+    - port: 2333
+      targetPort: 2333
+```
+
+```yaml Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chaos-dashboard
+  namespace: chaos-mesh
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+    - host: chaos.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chaos-dashboard
+                port:
+                  number: 2333
+```
+</CodeGroup>
+
+<Warning>
+When exposing the dashboard publicly, ensure proper authentication and TLS are configured. The dashboard provides full control over chaos experiments.
+</Warning>
+
+## Dashboard Features
+
+### Experiment Management
+
+The dashboard allows you to:
+
+<AccordionGroup>
+  <Accordion title="Create Experiments">
+    - Visual experiment builder with form-based interface
+    - Support for all chaos types (Pod, Network, Stress, I/O, etc.)
+    - Real-time YAML preview
+    - Selector validation and testing
+    - Duration and scheduling configuration
+  </Accordion>
+  
+  <Accordion title="View Active Experiments">
+    - List all running chaos experiments
+    - Filter by namespace, type, and status
+    - Real-time status updates
+    - Quick access to experiment details
+  </Accordion>
+  
+  <Accordion title="Monitor Experiment Status">
+    - Detailed experiment information
+    - Target pod selection results
+    - Injection status and errors
+    - Event timeline
+    - Logs and debugging information
+  </Accordion>
+  
+  <Accordion title="Modify and Delete">
+    - Pause/resume experiments
+    - Update experiment parameters
+    - Delete experiments
+    - Archive completed experiments
+  </Accordion>
+</AccordionGroup>
+
+### Workflow Management
+
+<Card title="Workflow Designer" icon="diagram-project">
+  Create and visualize complex workflows:
+  
+  - Drag-and-drop workflow builder
+  - Template library for common patterns
+  - Visual topology display
+  - Serial and parallel task orchestration
+  - Real-time execution monitoring
+  - Node status indicators
+</Card>
+
+**Workflow Topology View**
+
+The dashboard displays workflow execution as a node graph:
+- **Green nodes**: Completed successfully
+- **Blue nodes**: Currently running
+- **Red nodes**: Failed or aborted
+- **Gray nodes**: Pending execution
+
+### Schedule Management
+
+<Card title="Schedule Configuration" icon="clock">
+  Manage scheduled chaos experiments:
+  
+  - Create recurring schedules with cron syntax
+  - Cron expression validator
+  - Schedule history and execution logs
+  - Next execution time preview
+  - Pause/resume schedules
+  - View active scheduled experiments
+</Card>
+
+### Event Timeline
+
+Track all chaos-related events:
+- Experiment creation and deletion
+- Workflow state changes
+- Schedule executions
+- Error events and failures
+- System notifications
+
+Events can be filtered by:
+- Time range
+- Namespace
+- Event type
+- Severity level
+
+### Namespace Overview
+
+Dashboard homepage displays:
+- Total experiments by namespace
+- Active experiments count
+- Scheduled experiments
+- Running workflows
+- Recent events
+- System health indicators
+
+## Dashboard Architecture
+
+The Chaos Dashboard consists of several components:
+
+<Steps>
+  <Step title="API Server">
+    RESTful API backend (default port 2333) that handles:
+    - Experiment CRUD operations
+    - Workflow management
+    - Schedule operations
+    - Authentication and authorization
+    - Metrics collection
+  </Step>
+  
+  <Step title="UI Server">
+    Serves the React-based web interface with:
+    - Experiment designer
+    - Workflow visualizer
+    - Event viewer
+    - Metrics dashboards
+  </Step>
+  
+  <Step title="Store Layer">
+    Interfaces with Kubernetes API server to:
+    - List and watch chaos resources
+    - Create and update experiments
+    - Query workflow and schedule status
+    - Retrieve events
+  </Step>
+</Steps>
+
+## Configuration
+
+The dashboard can be configured through environment variables or Helm values:
+
+<ParamField path="LISTEN_HOST" type="string" default="0.0.0.0">
+  Host address for the dashboard server to bind to.
+</ParamField>
+
+<ParamField path="LISTEN_PORT" type="int" default="2333">
+  Port for the dashboard server to listen on.
+</ParamField>
+
+<ParamField path="ENABLE_PROFILING" type="bool" default="false">
+  Enable pprof profiling endpoints at `/debug/pprof`.
+</ParamField>
+
+<ParamField path="SECURITY_MODE" type="bool" default="false">
+  Enable authentication and RBAC checks.
+</ParamField>
+
+### Helm Configuration
+
+<CodeGroup>
+```yaml values.yaml
+dashboard:
+  enabled: true
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Security settings
+  securityMode: true
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 2333
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    hosts:
+      - host: chaos.example.com
+        paths:
+          - path: /
+    tls:
+      - secretName: chaos-dashboard-tls
+        hosts:
+          - chaos.example.com
+```
+</CodeGroup>
+
+## API Endpoints
+
+The dashboard exposes RESTful APIs that can be used programmatically:
+
+<ResponseField name="/api/experiments" type="GET, POST">
+  List or create chaos experiments
+</ResponseField>
+
+<ResponseField name="/api/experiments/{uid}" type="GET, PUT, DELETE">
+  Get, update, or delete a specific experiment
+</ResponseField>
+
+<ResponseField name="/api/workflows" type="GET, POST">
+  List or create workflows
+</ResponseField>
+
+<ResponseField name="/api/workflows/{uid}" type="GET, PUT, DELETE">
+  Manage specific workflow
+</ResponseField>
+
+<ResponseField name="/api/schedules" type="GET, POST">
+  List or create schedules
+</ResponseField>
+
+<ResponseField name="/api/events" type="GET">
+  Query chaos-related events
+</ResponseField>
+
+<ResponseField name="/api/common/namespaces" type="GET">
+  List available namespaces
+</ResponseField>
+
+<ResponseField name="/api/swagger/*" type="GET">
+  Swagger/OpenAPI documentation
+</ResponseField>
+
+API documentation is available at: http://localhost:2333/api/swagger/index.html
+
+## Security Considerations
+
+<Warning>
+The dashboard has full access to create and manage chaos experiments. Secure it appropriately.
+</Warning>
+
+### Authentication Options
+
+1. **Namespace Isolation**: Deploy dashboard in a restricted namespace
+2. **RBAC**: Configure Kubernetes RBAC to limit dashboard service account
+3. **Network Policies**: Restrict network access to dashboard pods
+4. **GCP Authentication**: Built-in support for Google Cloud IAP
+5. **Reverse Proxy**: Use nginx or similar for authentication layer
+
+### GCP Authentication
+
+<CodeGroup>
+```yaml Enable GCP Auth
+dashboard:
+  gcpSecurityMode: true
+  gcpClientId: "your-client-id.apps.googleusercontent.com"
+  gcpClientSecret: "your-client-secret"
+```
+</CodeGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Cannot Access Dashboard">
+    **Check port-forward:**
+    ```bash
+    kubectl get pods -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard
+    kubectl logs -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard
+    ```
+    
+    **Verify service:**
+    ```bash
+    kubectl get svc -n chaos-mesh chaos-dashboard
+    ```
+  </Accordion>
+  
+  <Accordion title="Dashboard Shows No Data">
+    **Check RBAC permissions:**
+    ```bash
+    kubectl get clusterrolebinding | grep chaos
+    ```
+    
+    **Verify controller is running:**
+    ```bash
+    kubectl get pods -n chaos-mesh
+    ```
+  </Accordion>
+  
+  <Accordion title="UI Not Loading">
+    Dashboard UI may not be built in the container image. Check:
+    ```bash
+    kubectl logs -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard | grep "UI is not built"
+    ```
+    
+    Ensure you're using an official release image with UI included.
+  </Accordion>
+</AccordionGroup>
+
+## Metrics Integration
+
+The dashboard collects HTTP request metrics exposed via Prometheus:
+
+- `chaos_dashboard_http_request_duration_seconds` - HTTP request latency histogram
+  - Labels: `path`, `method`, `status`
+
+See [Monitoring](/operations/monitoring) for details on metrics collection.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="diagram-project" href="/operations/workflows">
+    Create complex workflows through the dashboard
+  </Card>
+  
+  <Card title="Scheduling" icon="clock" href="/operations/scheduling">
+    Configure recurring experiments
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-bar" href="/operations/monitoring">
+    Set up metrics and observability
+  </Card>
+  
+  <Card title="Status Checks" icon="check" href="/operations/status-check">
+    Add validation to your experiments
+  </Card>
+</CardGroup>

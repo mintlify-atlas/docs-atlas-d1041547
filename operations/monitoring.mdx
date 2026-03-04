@@ -1,0 +1,495 @@
+---
+title: Monitoring
+description: Track and observe Chaos Mesh operations using Prometheus metrics
+---
+
+## Overview
+
+Chaos Mesh exposes Prometheus metrics for monitoring chaos experiments, workflows, schedules, and system health. These metrics enable observability, alerting, and performance analysis of your chaos engineering practice.
+
+## Metrics Components
+
+Chaos Mesh exposes metrics from three main components:
+
+1. **Chaos Controller Manager** - Experiment and orchestration metrics
+2. **Chaos Dashboard** - API and UI request metrics  
+3. **Chaos Daemon** - Agent-level injection metrics
+
+## Controller Manager Metrics
+
+The controller manager exposes metrics on port `10080` at `/metrics` endpoint.
+
+### Experiment Metrics
+
+<ResponseField name="chaos_controller_manager_chaos_experiments" type="gauge">
+  Total number of chaos experiments and their current phases.
+  
+  **Labels:**
+  - `namespace`: Experiment namespace
+  - `kind`: Chaos type (PodChaos, NetworkChaos, etc.)
+  - `phase`: Current phase (Running, Paused, Finished, Failed)
+  
+  **Example:**
+  ```
+  chaos_controller_manager_chaos_experiments{namespace="default",kind="PodChaos",phase="Running"} 3
+  chaos_controller_manager_chaos_experiments{namespace="production",kind="NetworkChaos",phase="Finished"} 15
+  ```
+</ResponseField>
+
+### Workflow Metrics
+
+<ResponseField name="chaos_controller_manager_chaos_workflows" type="gauge">
+  Total number of workflows by namespace.
+  
+  **Labels:**
+  - `namespace`: Workflow namespace
+  
+  **Example:**
+  ```
+  chaos_controller_manager_chaos_workflows{namespace="default"} 5
+  chaos_controller_manager_chaos_workflows{namespace="staging"} 12
+  ```
+</ResponseField>
+
+### Schedule Metrics
+
+<ResponseField name="chaos_controller_manager_chaos_schedules" type="gauge">
+  Total number of active schedules by namespace.
+  
+  **Labels:**
+  - `namespace`: Schedule namespace
+  
+  **Example:**
+  ```
+  chaos_controller_manager_chaos_schedules{namespace="default"} 8
+  chaos_controller_manager_chaos_schedules{namespace="production"} 20
+  ```
+</ResponseField>
+
+### Sidecar Injection Metrics
+
+<ResponseField name="chaos_mesh_injections_total" type="counter">
+  Total number of sidecar injections performed via the webhook.
+  
+  **Labels:**
+  - `namespace`: Target pod namespace
+  - `config`: Injection configuration name
+  
+  **Example:**
+  ```
+  chaos_mesh_injections_total{namespace="default",config="default"} 156
+  ```
+</ResponseField>
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_inject_required_total" type="counter">
+  Total number of injection requests received.
+  
+  **Labels:**
+  - `namespace`: Target namespace
+  - `config`: Configuration name
+</ResponseField>
+
+### Template Metrics
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_templates" type="gauge">
+  Total number of injection templates configured.
+</ResponseField>
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_config_templates" type="gauge">
+  Total number of configuration templates.
+  
+  **Labels:**
+  - `namespace`: Template namespace
+  - `template`: Template name
+</ResponseField>
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_injection_configs" type="gauge">
+  Total number of active injection configs.
+  
+  **Labels:**
+  - `namespace`: Config namespace
+  - `template`: Associated template
+</ResponseField>
+
+### Error Metrics
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_template_not_exist_total" type="counter">
+  Total template not found errors.
+  
+  **Labels:**
+  - `namespace`: Request namespace
+  - `template`: Missing template name
+</ResponseField>
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_template_load_failed_total" type="counter">
+  Total template rendering failures.
+</ResponseField>
+
+<ResponseField name="chaos_controller_manager_chaos_mesh_config_name_duplicate_total" type="counter">
+  Total configuration name duplication errors.
+  
+  **Labels:**
+  - `namespace`: Config namespace
+  - `config`: Duplicate config name
+</ResponseField>
+
+### Event Metrics
+
+<ResponseField name="chaos_controller_manager_emitted_event_total" type="counter">
+  Total number of Kubernetes events emitted by the controller.
+  
+  **Labels:**
+  - `type`: Event type (Normal, Warning)
+  - `reason`: Event reason code
+  - `namespace`: Event namespace
+  
+  **Example:**
+  ```
+  chaos_controller_manager_emitted_event_total{type="Normal",reason="ChaosCRCreated",namespace="default"} 45
+  chaos_controller_manager_emitted_event_total{type="Warning",reason="ChaosCRCreateFailed",namespace="default"} 2
+  ```
+</ResponseField>
+
+## Dashboard Metrics
+
+The dashboard exposes metrics on the same port as the API (default `2333`) at `/metrics`.
+
+<ResponseField name="chaos_dashboard_http_request_duration_seconds" type="histogram">
+  HTTP request latency histogram for dashboard API endpoints.
+  
+  **Labels:**
+  - `path`: API endpoint path
+  - `method`: HTTP method (GET, POST, PUT, DELETE)
+  - `status`: HTTP status code
+  
+  **Buckets:** Standard Prometheus histogram buckets
+  
+  **Example:**
+  ```
+  chaos_dashboard_http_request_duration_seconds_bucket{path="/api/experiments",method="GET",status="200",le="0.1"} 1543
+  chaos_dashboard_http_request_duration_seconds_bucket{path="/api/workflows",method="POST",status="201",le="0.5"} 89
+  ```
+</ResponseField>
+
+## Scraping Configuration
+
+### ServiceMonitor (Prometheus Operator)
+
+<CodeGroup>
+```yaml Controller Manager ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chaos-controller-manager
+  namespace: chaos-mesh
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: controller-manager
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+```
+
+```yaml Dashboard ServiceMonitor
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: chaos-dashboard
+  namespace: chaos-mesh
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: chaos-dashboard
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+```
+</CodeGroup>
+
+### Prometheus Configuration
+
+For standalone Prometheus without the operator:
+
+<CodeGroup>
+```yaml prometheus.yml
+scrape_configs:
+  - job_name: 'chaos-controller-manager'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - chaos-mesh
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+        regex: controller-manager
+        action: keep
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        regex: http
+        action: keep
+  
+  - job_name: 'chaos-dashboard'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - chaos-mesh
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_label_app_kubernetes_io_component]
+        regex: chaos-dashboard
+        action: keep
+```
+</CodeGroup>
+
+## Example Queries
+
+### Experiment Monitoring
+
+<CodeGroup>
+```promql Active Experiments by Type
+sum by (kind) (chaos_controller_manager_chaos_experiments{phase="Running"})
+```
+
+```promql Failed Experiments Rate
+rate(chaos_controller_manager_chaos_experiments{phase="Failed"}[5m])
+```
+
+```promql Experiments per Namespace
+sum by (namespace) (chaos_controller_manager_chaos_experiments)
+```
+</CodeGroup>
+
+### Workflow Monitoring
+
+<CodeGroup>
+```promql Total Active Workflows
+sum(chaos_controller_manager_chaos_workflows)
+```
+
+```promql Workflows by Namespace
+chaos_controller_manager_chaos_workflows
+```
+</CodeGroup>
+
+### Schedule Monitoring
+
+<CodeGroup>
+```promql Total Schedules
+sum(chaos_controller_manager_chaos_schedules)
+```
+
+```promql Schedule Distribution
+chaos_controller_manager_chaos_schedules
+```
+</CodeGroup>
+
+### Dashboard Performance
+
+<CodeGroup>
+```promql 95th Percentile API Latency
+histogram_quantile(0.95, 
+  rate(chaos_dashboard_http_request_duration_seconds_bucket[5m])
+)
+```
+
+```promql API Error Rate
+sum by (path) (
+  rate(chaos_dashboard_http_request_duration_seconds_count{status=~"5.."}[5m])
+)
+```
+
+```promql Request Rate by Endpoint
+sum by (path) (
+  rate(chaos_dashboard_http_request_duration_seconds_count[5m])
+)
+```
+</CodeGroup>
+
+### Injection Monitoring
+
+<CodeGroup>
+```promql Injection Success Rate
+rate(chaos_mesh_injections_total[5m])
+```
+
+```promql Template Errors
+rate(chaos_controller_manager_chaos_mesh_template_not_exist_total[5m])
+```
+</CodeGroup>
+
+## Grafana Dashboard
+
+Create comprehensive Grafana dashboards to visualize Chaos Mesh metrics:
+
+<Steps>
+  <Step title="Import Data Source">
+    Add your Prometheus instance as a data source in Grafana.
+  </Step>
+  
+  <Step title="Create Panels">
+    Recommended panels:
+    - Active experiments by type (pie chart)
+    - Experiment timeline (time series)
+    - Workflow execution count (gauge)
+    - Schedule execution rate (graph)
+    - Dashboard API latency (heatmap)
+    - Error rate by type (graph)
+  </Step>
+  
+  <Step title="Set Up Variables">
+    Create dashboard variables:
+    - `$namespace` - Namespace selector
+    - `$chaos_type` - Chaos experiment type
+    - `$interval` - Time interval for rate calculations
+  </Step>
+</Steps>
+
+### Example Panel Queries
+
+<CodeGroup>
+```promql Experiments by Phase
+sum by (phase, kind) (
+  chaos_controller_manager_chaos_experiments{namespace=~"$namespace"}
+)
+```
+
+```promql Event Rate
+sum by (reason, type) (
+  rate(chaos_controller_manager_emitted_event_total{namespace=~"$namespace"}[5m])
+)
+```
+</CodeGroup>
+
+## Alerting Rules
+
+Define Prometheus alerting rules for chaos operations:
+
+<CodeGroup>
+```yaml alerts.yml
+groups:
+  - name: chaos-mesh
+    interval: 30s
+    rules:
+      - alert: HighChaosExperimentFailureRate
+        expr: |
+          sum(rate(chaos_controller_manager_chaos_experiments{phase="Failed"}[5m]))
+          / sum(rate(chaos_controller_manager_chaos_experiments[5m]))
+          > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High chaos experiment failure rate"
+          description: "More than 10% of chaos experiments are failing"
+      
+      - alert: DashboardHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(chaos_dashboard_http_request_duration_seconds_bucket[5m])
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chaos Dashboard high API latency"
+          description: "95th percentile latency is above 1 second"
+      
+      - alert: InjectionErrors
+        expr: |
+          rate(chaos_controller_manager_chaos_mesh_template_not_exist_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chaos injection template errors"
+          description: "Template not found errors detected"
+      
+      - alert: NoScheduleExecutions
+        expr: |
+          sum(chaos_controller_manager_chaos_schedules) > 0
+          and rate(chaos_controller_manager_emitted_event_total{reason="ScheduleCreated"}[30m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Schedules not executing"
+          description: "Active schedules exist but no executions detected"
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Set Appropriate Scrape Intervals">
+    - Controller metrics: 30-60 seconds
+    - Dashboard metrics: 15-30 seconds
+    - Balance observability with cardinality
+  </Accordion>
+  
+  <Accordion title="Use Recording Rules">
+    Pre-compute frequently used queries:
+    ```yaml
+    - record: chaos:experiments:running:total
+      expr: sum(chaos_controller_manager_chaos_experiments{phase="Running"})
+    ```
+  </Accordion>
+  
+  <Accordion title="Monitor Metric Cardinality">
+    Track unique label combinations to prevent cardinality explosion, especially with namespace and kind labels.
+  </Accordion>
+  
+  <Accordion title="Correlate with Application Metrics">
+    Combine Chaos Mesh metrics with application performance metrics to measure experiment impact.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Metrics Not Appearing">
+    **Check metrics endpoint:**
+    ```bash
+    kubectl port-forward -n chaos-mesh svc/chaos-controller-manager 10080:10080
+    curl http://localhost:10080/metrics
+    ```
+    
+    **Verify ServiceMonitor:**
+    ```bash
+    kubectl get servicemonitor -n chaos-mesh
+    kubectl describe servicemonitor chaos-controller-manager -n chaos-mesh
+    ```
+  </Accordion>
+  
+  <Accordion title="Missing Labels">
+    Some metrics may be missing if no resources of that type exist. Create a test experiment to populate metrics.
+  </Accordion>
+  
+  <Accordion title="High Cardinality">
+    If experiencing high cardinality issues, consider:
+    - Reducing namespace diversity
+    - Aggregating less frequently used labels
+    - Using recording rules
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboard" icon="chart-line" href="/operations/dashboard">
+    Visualize metrics through the Chaos Dashboard
+  </Card>
+  
+  <Card title="Workflows" icon="diagram-project" href="/operations/workflows">
+    Monitor complex workflow executions
+  </Card>
+  
+  <Card title="Scheduling" icon="clock" href="/operations/scheduling">
+    Track scheduled experiment metrics
+  </Card>
+  
+  <Card title="Status Checks" icon="check" href="/operations/status-check">
+    Validate experiments with health checks
+  </Card>
+</CardGroup>

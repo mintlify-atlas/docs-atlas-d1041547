@@ -1,0 +1,995 @@
+---
+title: Chaos Types Overview
+description: Complete reference of all 14 chaos types supported by Chaos Mesh
+---
+
+Chaos Mesh supports 14 different chaos types for comprehensive fault injection across Kubernetes infrastructure and applications.
+
+## Overview
+
+Each chaos type is implemented as a Kubernetes Custom Resource Definition (CRD) with its own controller and injection mechanisms.
+
+**CRD Definitions**: `api/v1alpha1/`  
+**Controller Implementations**: `controllers/chaosimpl/`  
+**Daemon Implementations**: `pkg/chaosdaemon/`
+
+## Pod-Level Chaos
+
+### PodChaos
+
+Inject faults into pod lifecycle operations.
+
+<Card title="PodChaos" icon="box">
+  **CRD**: `podchaos_types.go`  
+  **Actions**: pod-kill, pod-failure, container-kill
+</Card>
+
+**Actions**:
+
+<Tabs>
+  <Tab title="pod-kill">
+    Kills entire pods by deleting them from Kubernetes.
+    
+    **Use Cases**:
+    - Test pod restart and recovery
+    - Validate StatefulSet resilience
+    - Test readiness probes
+    
+    **Parameters**:
+    - `gracePeriod`: Seconds before forced deletion (default: 0)
+    
+    **Example**:
+    ```yaml
+    action: pod-kill
+    gracePeriod: 30
+    ```
+  </Tab>
+  
+  <Tab title="pod-failure">
+    Makes pods unavailable without killing them by injecting a failure condition.
+    
+    **Use Cases**:
+    - Test service degradation
+    - Validate circuit breakers
+    - Test rolling updates under failure
+    
+    **Parameters**:
+    - `duration`: How long pod stays failed (required)
+    
+    **Example**:
+    ```yaml
+    action: pod-failure
+    duration: 30s
+    ```
+  </Tab>
+  
+  <Tab title="container-kill">
+    Kills specific containers within a pod.
+    
+    **Use Cases**:
+    - Test container restart policies
+    - Validate sidecar resilience
+    - Test init container dependencies
+    
+    **Parameters**:
+    - `containerNames`: List of containers to kill
+    
+    **Example**:
+    ```yaml
+    action: container-kill
+    containerNames: ["app", "sidecar"]
+    ```
+  </Tab>
+</Tabs>
+
+**Source**: `api/v1alpha1/podchaos_types.go:43-54`
+
+---
+
+## Network Chaos
+
+### NetworkChaos
+
+Inject network-level faults including latency, packet loss, and partitions.
+
+<Card title="NetworkChaos" icon="network-wired">
+  **CRD**: `networkchaos_types.go`  
+  **Actions**: netem, delay, loss, duplicate, corrupt, partition, bandwidth
+</Card>
+
+**Actions**:
+
+<AccordionGroup>
+  <Accordion title="delay - Network Latency">
+    Add latency to network packets.
+    
+    **Parameters**:
+    - `latency`: Delay duration (e.g., "100ms")
+    - `jitter`: Variation in delay (e.g., "10ms")
+    - `correlation`: Correlation percentage (0-100)
+    
+    **Example**:
+    ```yaml
+    action: delay
+    delay:
+      latency: "100ms"
+      jitter: "10ms"
+      correlation: "50"
+    ```
+    
+    **Implementation**: `pkg/chaosdaemon/tc_server.go`, `pkg/chaosdaemon/netem/`
+  </Accordion>
+  
+  <Accordion title="loss - Packet Loss">
+    Drop network packets randomly.
+    
+    **Parameters**:
+    - `loss`: Percentage of packets to drop (0-100)
+    - `correlation`: Correlation percentage
+    
+    **Example**:
+    ```yaml
+    action: loss
+    loss:
+      loss: "25"
+      correlation: "25"
+    ```
+  </Accordion>
+  
+  <Accordion title="duplicate - Packet Duplication">
+    Duplicate network packets.
+    
+    **Parameters**:
+    - `duplicate`: Percentage of packets to duplicate
+    - `correlation`: Correlation percentage
+    
+    **Example**:
+    ```yaml
+    action: duplicate
+    duplicate:
+      duplicate: "10"
+      correlation: "25"
+    ```
+  </Accordion>
+  
+  <Accordion title="corrupt - Packet Corruption">
+    Corrupt packet data.
+    
+    **Parameters**:
+    - `corrupt`: Percentage of packets to corrupt
+    - `correlation`: Correlation percentage
+    
+    **Example**:
+    ```yaml
+    action: corrupt
+    corrupt:
+      corrupt: "5"
+    ```
+  </Accordion>
+  
+  <Accordion title="partition - Network Partition">
+    Block network traffic between pods.
+    
+    **Parameters**:
+    - `direction`: to, from, or both
+    - `target`: Target pod selector
+    
+    **Example**:
+    ```yaml
+    action: partition
+    direction: both
+    target:
+      selector:
+        namespaces: ["default"]
+        labelSelectors:
+          app: "target-app"
+    ```
+  </Accordion>
+  
+  <Accordion title="bandwidth - Bandwidth Limitation">
+    Limit network bandwidth.
+    
+    **Parameters**:
+    - `rate`: Bandwidth limit (e.g., "1mbps")
+    - `limit`: Queue size in bytes
+    - `buffer`: Token bucket buffer size
+    
+    **Example**:
+    ```yaml
+    action: bandwidth
+    bandwidth:
+      rate: "1mbps"
+      limit: 20000
+      buffer: 10000
+    ```
+  </Accordion>
+  
+  <Accordion title="netem - Combined Network Effects">
+    Combine multiple network chaos effects.
+    
+    **Parameters**: Merge of delay, loss, duplicate, corrupt specs
+    
+    **Example**:
+    ```yaml
+    action: netem
+    delay:
+      latency: "100ms"
+    loss:
+      loss: "10"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Source**: `api/v1alpha1/networkchaos_types.go:48-73`
+
+---
+
+## I/O Chaos
+
+### IOChaos
+
+Inject file system I/O faults.
+
+<Card title="IOChaos" icon="hard-drive">
+  **CRD**: `iochaos_types.go`  
+  **Actions**: latency, fault, attrOverride, mistake
+</Card>
+
+**Actions**:
+
+<CardGroup cols={2}>
+  <Card title="latency" icon="clock">
+    Add delay to I/O operations.
+    
+    **Parameters**:
+    - `delay`: Duration (e.g., "100ms")
+    - `path`: File path pattern
+    - `methods`: I/O methods to affect
+    - `percent`: Percentage of operations (0-100)
+    
+    ```yaml
+    action: latency
+    delay: "100ms"
+    path: "/var/data/*"
+    percent: 50
+    ```
+  </Card>
+  
+  <Card title="fault" icon="circle-exclamation">
+    Return errors on I/O operations.
+    
+    **Parameters**:
+    - `errno`: Error code (e.g., 5 for EIO)
+    - `path`: File path pattern
+    - `methods`: I/O methods to affect
+    
+    ```yaml
+    action: fault
+    errno: 5
+    path: "/data/file.txt"
+    ```
+  </Card>
+  
+  <Card title="attrOverride" icon="pen-to-square">
+    Override file attributes.
+    
+    **Parameters**:
+    - `attr`: Attribute overrides
+    - `path`: File path pattern
+    
+    ```yaml
+    action: attrOverride
+    attr:
+      perm: 0000
+    ```
+  </Card>
+  
+  <Card title="mistake" icon="bug">
+    Inject incorrect data into I/O.
+    
+    **Parameters**:
+    - `mistake`: Mistake specification
+    - `path`: File path pattern
+    
+    ```yaml
+    action: mistake
+    path: "/data/*"
+    ```
+  </Card>
+</CardGroup>
+
+**Implementation**: FUSE-based interception (`pkg/chaosdaemon/iochaos_server.go`)
+
+**Source**: `api/v1alpha1/iochaos_types.go:50-51`
+
+---
+
+## Stress Chaos
+
+### StressChaos
+
+Generate CPU or memory stress on pods.
+
+<Card title="StressChaos" icon="fire">
+  **CRD**: `stresschaos_types.go`  
+  **Stressors**: CPU, Memory
+</Card>
+
+**Stressor Types**:
+
+<Tabs>
+  <Tab title="CPU Stress">
+    Stress CPU cores.
+    
+    **Parameters**:
+    - `workers`: Number of CPU workers
+    - `load`: Load percentage per worker (0-100)
+    - `options`: Additional stress-ng options
+    
+    **Example**:
+    ```yaml
+    stressors:
+      cpu:
+        workers: 2
+        load: 50
+    ```
+    
+    **Source**: `api/v1alpha1/stresschaos_types.go:183-196`
+  </Tab>
+  
+  <Tab title="Memory Stress">
+    Stress memory allocation.
+    
+    **Parameters**:
+    - `workers`: Number of memory workers
+    - `size`: Memory size per worker (e.g., "256MB", "50%")
+    - `oomScoreAdj`: OOM score adjustment (-1000 to 1000)
+    - `options`: Additional stress-ng options
+    
+    **Example**:
+    ```yaml
+    stressors:
+      memory:
+        workers: 4
+        size: "256MB"
+    ```
+    
+    **Source**: `api/v1alpha1/stresschaos_types.go:160-181`
+  </Tab>
+</Tabs>
+
+**Implementation**: Uses stress-ng (`pkg/chaosdaemon/stress_server_linux.go`)
+
+---
+
+## Time Chaos
+
+### TimeChaos
+
+Simulate clock skew by offsetting system time.
+
+<Card title="TimeChaos" icon="clock">
+  **CRD**: `timechaos_types.go`  
+  **Mechanism**: vDSO clock interception
+</Card>
+
+**Parameters**:
+- `timeOffset`: Offset duration (e.g., "-1h", "30m", "5s")
+- `clockIds`: Clock IDs to affect (CLOCK_REALTIME, CLOCK_MONOTONIC, etc.)
+
+**Example**:
+```yaml
+timeOffset: "-1h"
+clockIds:
+  - CLOCK_REALTIME
+  - CLOCK_MONOTONIC
+```
+
+**Use Cases**:
+- Test time-sensitive logic
+- Validate timeout handling
+- Test distributed system clock drift
+- Certificate expiration testing
+
+**Implementation**: Syscall interception (`pkg/chaosdaemon/time_server_linux.go`)
+
+**Source**: `api/v1alpha1/timechaos_types.go:48-56`
+
+---
+
+## HTTP Chaos
+
+### HTTPChaos
+
+Manipulate HTTP requests and responses.
+
+<Card title="HTTPChaos" icon="globe">
+  **CRD**: `httpchaos_types.go`  
+  **Target**: Request or Response
+</Card>
+
+**Actions**:
+- **Abort**: Return error responses
+- **Delay**: Add latency
+- **Replace**: Modify request/response body
+- **Patch**: Modify headers
+
+**Matching Criteria**:
+- `port`: Target port
+- `path`: URI path pattern
+- `method`: HTTP method (GET, POST, etc.)
+- `code`: Response status code
+- `requestHeaders`: Request header matchers
+- `responseHeaders`: Response header matchers
+
+**Example**:
+```yaml
+target: Request
+port: 8080
+path: "/api/*"
+method: GET
+abort: true
+```
+
+**Implementation**: Transparent proxy (`pkg/chaosdaemon/httpchaos_server.go`)
+
+**Source**: `api/v1alpha1/httpchaos_types.go:40-86`
+
+---
+
+## DNS Chaos
+
+### DNSChaos
+
+Inject DNS resolution errors.
+
+<Card title="DNSChaos" icon="globe">
+  **CRD**: `dnschaos_type.go`  
+  **Actions**: error, random
+</Card>
+
+**Actions**:
+
+<Tabs>
+  <Tab title="error">
+    Return DNS resolution errors.
+    
+    **Example**:
+    ```yaml
+    action: error
+    patterns:
+      - "google.com"
+      - "github.*"
+    ```
+  </Tab>
+  
+  <Tab title="random">
+    Return random IP addresses.
+    
+    **Example**:
+    ```yaml
+    action: random
+    patterns:
+      - "*.example.com"
+    ```
+  </Tab>
+</Tabs>
+
+**Pattern Matching**:
+- Exact match: `"google.com"`
+- Wildcard suffix: `"github.*"` (matches github.com, github.io)
+- Placeholder: `"chaos-mes?.org"` (matches chaos-mesh.org)
+
+**Implementation**: Custom DNS server (`pkg/chaosdaemon/dns_server.go`)
+
+**Source**: `api/v1alpha1/dnschaos_type.go:26-34`
+
+---
+
+## JVM Chaos
+
+### JVMChaos
+
+Inject faults into JVM applications using Byteman.
+
+<Card title="JVMChaos" icon="java">
+  **CRD**: `jvmchaos_types.go`  
+  **Actions**: latency, return, exception, stress, gc, ruleData, mysql
+</Card>
+
+**Actions**:
+
+<AccordionGroup>
+  <Accordion title="latency - Method Latency">
+    Add delay to Java method invocations.
+    
+    **Parameters**:
+    - `class`: Java class name
+    - `method`: Method name
+    - `latency`: Delay in milliseconds
+    
+    ```yaml
+    action: latency
+    class: "com.example.Service"
+    method: "getData"
+    latency: 1000
+    ```
+  </Accordion>
+  
+  <Accordion title="return - Override Return Value">
+    Override method return values.
+    
+    **Parameters**:
+    - `class`: Java class name
+    - `method`: Method name
+    - `returnValue`: Value to return
+    
+    ```yaml
+    action: return
+    class: "com.example.Service"
+    method: "isEnabled"
+    returnValue: "false"
+    ```
+  </Accordion>
+  
+  <Accordion title="exception - Throw Exception">
+    Throw exceptions from methods.
+    
+    **Parameters**:
+    - `class`: Java class name
+    - `method`: Method name
+    - `exception`: Exception to throw
+    
+    ```yaml
+    action: exception
+    class: "com.example.Service"
+    method: "process"
+    exception: "java.io.IOException"
+    ```
+  </Accordion>
+  
+  <Accordion title="stress - JVM Stress">
+    Generate CPU or memory stress within JVM.
+    
+    **Parameters**:
+    - `cpuCount`: Number of CPU cores to stress
+    - `memoryType`: "stack" or "heap"
+    
+    ```yaml
+    action: stress
+    cpuCount: 2
+    memoryType: "heap"
+    ```
+  </Accordion>
+  
+  <Accordion title="gc - Trigger GC">
+    Trigger garbage collection.
+    
+    ```yaml
+    action: gc
+    ```
+  </Accordion>
+  
+  <Accordion title="ruleData - Custom Byteman Rule">
+    Execute custom Byteman rule.
+    
+    **Parameters**:
+    - `ruleData`: Raw Byteman rule
+    
+    ```yaml
+    action: ruleData
+    ruleData: |
+      RULE custom rule
+      CLASS com.example.Service
+      METHOD process
+      AT ENTRY
+      IF true
+      DO traceln("Method called")
+      ENDRULE
+    ```
+  </Accordion>
+  
+  <Accordion title="mysql - MySQL JDBC Faults">
+    Inject faults into MySQL JDBC operations.
+    
+    **Parameters**:
+    - `mysqlConnectorVersion`: "5" or "8"
+    - `database`: Database name pattern
+    - `table`: Table name pattern
+    - `sqlType`: SQL type (select, insert, update, delete, replace)
+    - `exception`: Exception to throw
+    - `latency`: Delay in milliseconds
+    
+    ```yaml
+    action: mysql
+    mysqlConnectorVersion: "8"
+    database: "test"
+    table: "users"
+    sqlType: "select"
+    latency: 1000
+    ```
+  </Accordion>
+</AccordionGroup>
+
+**Implementation**: Byteman agent (`pkg/chaosdaemon/jvm_server.go`)
+
+**Source**: `api/v1alpha1/jvmchaos_types.go:44-69`
+
+---
+
+## Kernel Chaos
+
+### KernelChaos
+
+Inject faults into kernel functions using BPF.
+
+<Card title="KernelChaos" icon="terminal">
+  **CRD**: `kernelchaos_types.go`  
+  **Mechanism**: BPF-based fault injection
+</Card>
+
+**Fail Types**:
+- `0`: slab allocation failures (kmalloc)
+- `1`: page allocation failures
+- `2`: bio (block I/O) failures
+
+**Parameters**:
+- `failtype`: What to fail (0, 1, or 2)
+- `headers`: Required kernel headers
+- `callchain`: Specific call chain to target
+- `probability`: Percentage (0-100)
+- `times`: Maximum failure count
+
+**Example**:
+```yaml
+failKernRequest:
+  failtype: 0  # slab allocation
+  probability: 50
+  times: 100
+  callchain:
+    - funcname: "ext4_mount"
+      predicate: 'STRNCMP(name->name, "bananas", 8)'
+```
+
+**Use Cases**:
+- Test memory allocation failures
+- Validate error handling in file system operations
+- Test resilience to kernel-level faults
+
+**Source**: `api/v1alpha1/kernelchaos_types.go:58-98`
+
+---
+
+## Block Chaos
+
+### BlockChaos
+
+Inject delays into block device I/O operations.
+
+<Card title="BlockChaos" icon="database">
+  **CRD**: `blockchaos_types.go`  
+  **Actions**: delay
+</Card>
+
+**Parameters**:
+- `volumeName`: Name of the volume
+- `delay.latency`: I/O delay duration
+- `delay.jitter`: Jitter amount
+- `delay.correlation`: Correlation percentage
+
+**Example**:
+```yaml
+action: delay
+volumeName: "data-volume"
+delay:
+  latency: "100ms"
+  jitter: "10ms"
+  correlation: "50"
+```
+
+**Use Cases**:
+- Test application behavior under slow disks
+- Validate timeout handling
+- Test I/O-bound applications
+
+**Implementation**: `pkg/chaosdaemon/blockchaos_server_linux.go`
+
+**Source**: `api/v1alpha1/blockchaos_types.go:35-73`
+
+---
+
+## Cloud Provider Chaos
+
+### AWSChaos
+
+Inject faults into AWS infrastructure.
+
+<Card title="AWSChaos" icon="aws">
+  **CRD**: `awschaos_types.go`  
+  **Actions**: ec2-stop, ec2-restart, detach-volume
+</Card>
+
+**Actions**:
+
+<Tabs>
+  <Tab title="ec2-stop">
+    Stop EC2 instances.
+    
+    **Parameters**:
+    - `awsRegion`: AWS region
+    - `ec2Instance`: Instance ID
+    - `secretName`: AWS credentials secret
+    
+    ```yaml
+    action: ec2-stop
+    awsRegion: "us-west-2"
+    ec2Instance: "i-1234567890abcdef0"
+    ```
+  </Tab>
+  
+  <Tab title="ec2-restart">
+    Restart EC2 instances.
+    
+    ```yaml
+    action: ec2-restart
+    awsRegion: "us-west-2"
+    ec2Instance: "i-1234567890abcdef0"
+    ```
+  </Tab>
+  
+  <Tab title="detach-volume">
+    Detach EBS volumes.
+    
+    **Parameters**:
+    - `volumeID`: EBS volume ID
+    - `deviceName`: Device name
+    
+    ```yaml
+    action: detach-volume
+    awsRegion: "us-west-2"
+    ec2Instance: "i-1234567890abcdef0"
+    volumeID: "vol-1234567890abcdef0"
+    deviceName: "/dev/sdf"
+    ```
+  </Tab>
+</Tabs>
+
+**Source**: `api/v1alpha1/awschaos_types.go:43-76`
+
+---
+
+### GCPChaos
+
+Inject faults into GCP infrastructure.
+
+<Card title="GCPChaos" icon="google">
+  **CRD**: `gcpchaos_types.go`  
+  **Actions**: node-stop, node-reset, disk-loss
+</Card>
+
+**Actions**:
+- `node-stop`: Stop Compute Engine instances
+- `node-reset`: Reset Compute Engine instances
+- `disk-loss`: Detach persistent disks
+
+**Parameters**:
+- `project`: GCP project ID
+- `zone`: GCP zone
+- `instance`: Instance name
+- `deviceNames`: Disk device names (for disk-loss)
+
+**Example**:
+```yaml
+action: disk-loss
+project: "my-project"
+zone: "us-central1-a"
+instance: "my-instance"
+deviceNames: ["disk-1", "disk-2"]
+```
+
+**Source**: `api/v1alpha1/gcpchaos_types.go:44-77`
+
+---
+
+### AzureChaos
+
+Inject faults into Azure infrastructure.
+
+<Card title="AzureChaos" icon="microsoft">
+  **CRD**: `azurechaos_types.go`  
+  **Actions**: vm-stop, vm-restart, disk-detach
+</Card>
+
+**Actions**:
+- `vm-stop`: Stop Azure VMs
+- `vm-restart`: Restart Azure VMs
+- `disk-detach`: Detach managed disks
+
+**Parameters**:
+- `subscriptionID`: Azure subscription ID
+- `resourceGroupName`: Resource group name
+- `vmName`: VM name
+- `diskName`: Disk name (for disk-detach)
+- `lun`: Logical unit number (for disk-detach)
+
+**Example**:
+```yaml
+action: disk-detach
+subscriptionID: "sub-123"
+resourceGroupName: "my-rg"
+vmName: "my-vm"
+diskName: "data-disk"
+lun: 0
+```
+
+**Source**: `api/v1alpha1/azurechaos_types.go:43-68`
+
+---
+
+## Physical Machine Chaos
+
+### PhysicalMachineChaos
+
+Inject faults into physical machines or VMs outside Kubernetes.
+
+<Card title="PhysicalMachineChaos" icon="server">
+  **CRD**: `physical_machine_chaos_types.go`  
+  **Actions**: 40+ actions across network, disk, process, JVM, and more
+</Card>
+
+**Action Categories**:
+
+<AccordionGroup>
+  <Accordion title="Stress Actions">
+    - `stress-cpu`: CPU stress
+    - `stress-mem`: Memory stress
+  </Accordion>
+  
+  <Accordion title="Disk Actions">
+    - `disk-read-payload`: Disk read stress
+    - `disk-write-payload`: Disk write stress
+    - `disk-fill`: Fill disk space
+  </Accordion>
+  
+  <Accordion title="Network Actions">
+    - `network-corrupt`: Packet corruption
+    - `network-duplicate`: Packet duplication
+    - `network-loss`: Packet loss
+    - `network-delay`: Network latency
+    - `network-partition`: Network partition
+    - `network-dns`: DNS chaos
+    - `network-bandwidth`: Bandwidth limitation
+    - `network-flood`: Network flooding
+    - `network-down`: Disable network interface
+  </Accordion>
+  
+  <Accordion title="Process Actions">
+    - `process`: Kill or signal processes
+  </Accordion>
+  
+  <Accordion title="JVM Actions">
+    - `jvm-exception`: Throw exceptions
+    - `jvm-gc`: Trigger GC
+    - `jvm-latency`: Method latency
+    - `jvm-return`: Override return values
+    - `jvm-stress`: JVM stress
+    - `jvm-rule-data`: Custom Byteman rules
+    - `jvm-mysql`: MySQL JDBC faults
+  </Accordion>
+  
+  <Accordion title="Clock Actions">
+    - `clock`: Clock offset
+  </Accordion>
+  
+  <Accordion title="Redis Actions">
+    - `redis-expiration`: Set key expiration
+    - `redis-penetration`: Cache penetration
+    - `redis-cacheLimit`: Limit cache size
+    - `redis-restart`: Restart Redis Sentinel
+    - `redis-stop`: Stop Redis Sentinel
+  </Accordion>
+  
+  <Accordion title="Kafka Actions">
+    - `kafka-fill`: Fill Kafka topic
+    - `kafka-flood`: Flood Kafka
+    - `kafka-io`: Kafka I/O faults
+  </Accordion>
+  
+  <Accordion title="HTTP Actions">
+    - `http-abort`: Abort HTTP requests
+    - `http-delay`: HTTP latency
+    - `http-config`: HTTP config manipulation
+    - `http-request`: Send HTTP requests
+  </Accordion>
+  
+  <Accordion title="File Actions">
+    - `file-create`: Create files
+    - `file-modify`: Modify file permissions
+    - `file-delete`: Delete files
+    - `file-rename`: Rename files
+    - `file-append`: Append to files
+    - `file-replace`: Replace file content
+  </Accordion>
+  
+  <Accordion title="VM Actions">
+    - `vm`: VM-level operations
+  </Accordion>
+  
+  <Accordion title="Custom Actions">
+    - `user_defined`: Execute custom commands
+  </Accordion>
+</AccordionGroup>
+
+**Source**: `api/v1alpha1/physical_machine_chaos_types.go:22-69`
+
+<Warning>
+PhysicalMachineChaos requires installing chaosd agent on target machines. It operates outside the Kubernetes cluster.
+</Warning>
+
+---
+
+## Common Fields
+
+All chaos types share common fields:
+
+### Selector
+
+Defines which pods/resources to target. See [Selectors](/concepts/selectors) for details.
+
+### Mode
+
+How many targets to affect:
+- `one`: Random single target
+- `all`: All matching targets
+- `fixed`: Fixed number (set `value`)
+- `fixed-percent`: Fixed percentage (set `value`)
+- `random-max-percent`: Random up to max percentage (set `value`)
+
+### Duration
+
+How long the chaos lasts:
+```yaml
+duration: "30s"  # 30 seconds
+duration: "5m"   # 5 minutes
+duration: "1h"   # 1 hour
+```
+
+Omit for indefinite duration (manual deletion required).
+
+### Remote Cluster
+
+Target pods in remote clusters:
+```yaml
+remoteCluster: "cluster-2"
+```
+
+## Status Tracking
+
+All chaos experiments track status with:
+
+**Conditions** (`api/v1alpha1/common_types.go:45-52`):
+- `Selected`: Targets have been selected
+- `AllInjected`: All targets are injected
+- `AllRecovered`: All targets are recovered
+- `Paused`: Experiment is paused
+
+**Records** (`api/v1alpha1/common_types.go:78-88`):
+- Track injection/recovery events
+- Count successful operations
+- Record timestamps and error messages
+
+## Related Resources
+
+<CardGroup cols={3}>
+  <Card title="Architecture" icon="sitemap" href="/concepts/architecture">
+    How chaos types are implemented
+  </Card>
+  
+  <Card title="Selectors" icon="filter" href="/concepts/selectors">
+    Target selection mechanisms
+  </Card>
+  
+  <Card title="Components" icon="cubes" href="/concepts/components">
+    Component responsibilities
+  </Card>
+</CardGroup>

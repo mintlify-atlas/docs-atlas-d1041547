@@ -1,0 +1,281 @@
+---
+title: KernelChaos
+description: Inject kernel-level faults using BPF
+---
+
+KernelChaos allows you to inject faults at the Linux kernel level using BPF (Berkeley Packet Filter) to simulate low-level system failures such as memory allocation failures, page allocation failures, and bio (block I/O) failures.
+
+## Supported Fault Types
+
+KernelChaos supports three types of kernel-level fault injection:
+
+- **slab allocation failure** (should_failslab) - failtype 0
+- **page allocation failure** (should_fail_alloc_page) - failtype 1  
+- **bio (block I/O) failure** (should_fail_bio) - failtype 2
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: kernel-allocation-failure
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  failKernRequest:
+    failtype: 0
+    probability: 10
+    times: 100
+  duration: "30s"
+```
+
+## Spec Fields
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="failKernRequest" type="FailKernRequest" required>
+  Defines the kernel fault injection configuration
+
+  <Expandable title="FailKernRequest fields">
+    <ParamField path="failtype" type="int32" required>
+      Type of kernel fault to inject (0-2):
+      - `0`: slab allocation failure (kmalloc failures)
+      - `1`: page allocation failure (alloc_page failures)
+      - `2`: bio failure (block I/O failures)
+    </ParamField>
+
+    <ParamField path="headers" type="string[]">
+      Kernel headers to include for the BPF program. Examples:
+      - `"linux/mmzone.h"`
+      - `"linux/blkdev.h"`
+      - `"linux/slab.h"`
+    </ParamField>
+
+    <ParamField path="callchain" type="Frame[]">
+      Call chain to target specific code paths. Each frame represents a function in the call stack.
+      
+      <Expandable title="Frame fields">
+        <ParamField path="funcname" type="string">
+          Function name (can be found in kernel source or /proc/kallsyms). Example: `"ext4_mount"`, `"d_alloc_parallel"`
+        </ParamField>
+
+        <ParamField path="parameters" type="string">
+          Function parameters for predicate evaluation. Example: `"struct dentry *parent, const struct qstr *name"`
+        </ParamField>
+
+        <ParamField path="predicate" type="string">
+          Condition to evaluate using function parameters. Example: `"STRNCMP(name->name, \"bananas\", 8)"`
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="probability" type="uint32" default="0">
+      Probability of failure (0-100). Percentage chance that the fault will be injected when conditions are met.
+    </ParamField>
+
+    <ParamField path="times" type="uint32" default="0">
+      Maximum number of times to inject the fault. 0 means unlimited.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+<ParamField path="containerNames" type="string[]">
+  List of container names to inject chaos into. If not set, chaos is injected at pod level.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### Slab Allocation Failure
+
+Inject kmalloc failures with 10% probability:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: slab-failure
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  failKernRequest:
+    failtype: 0
+    probability: 10
+    times: 100
+  duration: "60s"
+```
+
+### Page Allocation Failure
+
+Inject page allocation failures:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: page-alloc-failure
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: database
+  failKernRequest:
+    failtype: 1
+    headers:
+      - "linux/mmzone.h"
+    probability: 5
+    times: 50
+  duration: "30s"
+```
+
+### Bio Failure
+
+Inject block I/O failures:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: bio-failure
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: storage-app
+  failKernRequest:
+    failtype: 2
+    headers:
+      - "linux/blkdev.h"
+    probability: 15
+  duration: "45s"
+```
+
+### Targeted Call Chain
+
+Inject failures only in specific call chain:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: KernelChaos
+metadata:
+  name: targeted-failure
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  failKernRequest:
+    failtype: 0
+    headers:
+      - "linux/dcache.h"
+    callchain:
+      - funcname: "d_alloc_parallel"
+        parameters: "struct dentry *parent, const struct qstr *name"
+        predicate: "STRNCMP(name->name, \"bananas\", 8)"
+    probability: 100
+    times: 10
+  duration: "120s"
+```
+
+## Use Cases
+
+### Testing Memory Allocation Failures
+
+Use `failtype: 0` (slab) or `failtype: 1` (page) to test how applications handle memory allocation failures, which can occur under memory pressure.
+
+### Storage Layer Testing
+
+Use `failtype: 2` (bio) to test application resilience to block I/O failures, simulating disk errors or storage subsystem issues.
+
+### Resource Exhaustion Scenarios
+
+Simulate kernel-level resource exhaustion that may occur in production during high load or memory pressure.
+
+### Low-Level Error Path Testing
+
+Test error handling in kernel code paths that are difficult to trigger through normal application behavior.
+
+## Best Practices
+
+1. **Understand Kernel Internals**: KernelChaos requires knowledge of Linux kernel internals and function call paths
+2. **Start with Low Probability**: Begin with 1-5% probability to avoid overwhelming the system
+3. **Use Times Limit**: Set `times` to limit the total number of injected faults and prevent cascading failures
+4. **Reference Documentation**:
+   - [Linux Fault Injection](https://www.kernel.org/doc/html/latest/fault-injection/fault-injection.html)
+   - [BCC inject_example.txt](http://github.com/iovisor/bcc/blob/master/tools/inject_example.txt)
+   - [BPFKI examples](https://github.com/chaos-mesh/bpfki/tree/develop/examples)
+5. **Test in Isolation**: Start with `mode: one` and test on non-critical pods first
+6. **Monitor System Stability**: Watch for:
+   - OOM killer activations
+   - Kernel panics or warnings
+   - Application crashes
+   - System performance degradation
+7. **Use Call Chains**: Specify call chains to target specific code paths and avoid system-wide impact
+8. **Headers Selection**: Include appropriate kernel headers based on the failtype:
+   - failtype 0: `linux/slab.h`, `linux/mm.h`
+   - failtype 1: `linux/mmzone.h`, `linux/gfp.h`
+   - failtype 2: `linux/blkdev.h`, `linux/bio.h`
+
+## Understanding Failtype
+
+<ResponseField name="Failtype 0 - should_failslab">
+  Causes kmalloc, kmem_cache_alloc, and related slab allocations to fail. This simulates memory allocation failures at the slab allocator level. Common in memory-constrained scenarios.
+</ResponseField>
+
+<ResponseField name="Failtype 1 - should_fail_alloc_page">
+  Causes page allocations to fail. This affects larger memory allocations and can simulate severe memory pressure scenarios.
+</ResponseField>
+
+<ResponseField name="Failtype 2 - should_fail_bio">
+  Causes block I/O operations to fail. This simulates storage device failures, I/O errors, or storage subsystem issues.
+</ResponseField>
+
+## Call Chain Predicates
+
+Predicates allow fine-grained control over when faults are injected:
+
+```yaml
+callchain:
+  - funcname: "ext4_mount"
+  - funcname: "mount_subtree"
+  - funcname: "d_alloc_parallel"
+    parameters: "struct dentry *parent, const struct qstr *name"
+    predicate: "STRNCMP(name->name, \"target.db\", 9)"
+```
+
+This example only injects failures when the call chain goes through ext4_mount → mount_subtree → d_alloc_parallel AND the name parameter matches "target.db".
+
+## Notes
+
+- KernelChaos uses eBPF (extended Berkeley Packet Filter) to inject faults at kernel level
+- Requires kernel support for fault injection and BPF
+- The chaos-mesh/bpfki project provides the BPF kernel injection infrastructure
+- Kernel functions and their parameters can be found using:
+  - `/proc/kallsyms` for function addresses
+  - Kernel source code for function signatures
+  - `bpftrace` or `bcc` tools for function tracing
+- Call chains must match the actual kernel call path for the fault to be injected
+- Predicates use C-style syntax and have access to function parameters
+- This is an advanced chaos type - improper use can cause system instability
+- Always test in non-production environments first
+- Some kernel versions may not support all failtype options

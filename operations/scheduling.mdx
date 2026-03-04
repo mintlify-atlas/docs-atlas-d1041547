@@ -1,0 +1,378 @@
+---
+title: Scheduling
+description: Schedule chaos experiments to run automatically on a recurring basis
+---
+
+## Overview
+
+Chaos Mesh Schedules enable you to run chaos experiments automatically at specified times or intervals using cron syntax. This is useful for continuous chaos engineering, periodic resilience testing, and automated fault injection.
+
+## Schedule Structure
+
+A Schedule wraps any chaos experiment type and executes it according to a defined schedule.
+
+<CodeGroup>
+```yaml Basic Schedule
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: schedule-pod-kill-example
+spec:
+  schedule: "@every 5s"
+  type: "PodChaos"
+  historyLimit: 5
+  concurrencyPolicy: Forbid
+  podChaos:
+    action: "pod-kill"
+    mode: one
+    selector:
+      labelSelectors:
+        "app.kubernetes.io/component": "tikv"
+```
+</CodeGroup>
+
+## Schedule Specification
+
+<ParamField path="schedule" type="string" required>
+  Cron expression or predefined schedule defining when the chaos experiment runs.
+  
+  Examples:
+  - `"@every 5s"` - Every 5 seconds
+  - `"@every 1m"` - Every minute
+  - `"@every 1h"` - Every hour
+  - `"@hourly"` - Same as `0 * * * *`
+  - `"@daily"` - Same as `0 0 * * *`
+  - `"*/5 * * * *"` - Every 5 minutes
+  - `"0 9 * * 1-5"` - 9 AM weekdays
+</ParamField>
+
+<ParamField path="type" type="string" required>
+  The type of chaos experiment to schedule. Must be one of:
+  
+  - `PodChaos`
+  - `NetworkChaos`
+  - `StressChaos`
+  - `IOChaos`
+  - `TimeChaos`
+  - `HTTPChaos`
+  - `DNSChaos`
+  - `KernelChaos`
+  - `JVMChaos`
+  - `AWSChaos`
+  - `GCPChaos`
+  - `AzureChaos`
+  - `BlockChaos`
+  - `PhysicalMachineChaos`
+</ParamField>
+
+<ParamField path="startingDeadlineSeconds" type="int64">
+  Optional deadline in seconds for starting the job if it misses scheduled time for any reason. Missed jobs executions will be counted as failed ones.
+  
+  Must be greater than 0.
+</ParamField>
+
+<ParamField path="concurrencyPolicy" type="ConcurrencyPolicy" default="Forbid">
+  Specifies how to handle concurrent executions of the scheduled chaos experiment.
+  
+  - `Forbid` (default): Do not allow concurrent runs. Skip new run if previous is still active.
+  - `Allow`: Allow concurrent runs. Multiple instances of the experiment can run simultaneously.
+</ParamField>
+
+<ParamField path="historyLimit" type="int" default="3">
+  Number of completed chaos experiment records to retain for this schedule. Must be at least 1.
+  
+  This helps manage resource usage by cleaning up old experiment objects.
+</ParamField>
+
+## Cron Syntax
+
+Chaos Mesh supports the standard cron format with optional seconds field:
+
+```
+┌───────────── second (0 - 59, optional)
+│ ┌───────────── minute (0 - 59)
+│ │ ┌───────────── hour (0 - 23)
+│ │ │ ┌───────────── day of month (1 - 31)
+│ │ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ │ ┌───────────── day of week (0 - 6) (Sunday to Saturday)
+│ │ │ │ │ │
+│ │ │ │ │ │
+* * * * * *
+```
+
+### Special Strings
+
+<ResponseField name="@every <duration>">
+  Run at the specified interval. Duration can use units: `s`, `m`, `h`.
+  
+  Examples: `@every 30s`, `@every 5m`, `@every 2h`
+</ResponseField>
+
+<ResponseField name="@hourly">
+  Run once an hour at the beginning of the hour. Equivalent to `0 * * * *`.
+</ResponseField>
+
+<ResponseField name="@daily" alias="@midnight">
+  Run once a day at midnight. Equivalent to `0 0 * * *`.
+</ResponseField>
+
+<ResponseField name="@weekly">
+  Run once a week at midnight on Sunday. Equivalent to `0 0 * * 0`.
+</ResponseField>
+
+<ResponseField name="@monthly">
+  Run once a month at midnight on the first day. Equivalent to `0 0 1 * *`.
+</ResponseField>
+
+<ResponseField name="@yearly" alias="@annually">
+  Run once a year at midnight on January 1st. Equivalent to `0 0 1 1 *`.
+</ResponseField>
+
+## Schedule Examples
+
+### Network Chaos Every 5 Minutes
+
+<CodeGroup>
+```yaml NetworkChaos Schedule
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: network-delay-schedule
+spec:
+  schedule: "*/5 * * * *"
+  type: NetworkChaos
+  concurrencyPolicy: Forbid
+  historyLimit: 10
+  networkChaos:
+    action: delay
+    mode: all
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        "app": "api-server"
+    delay:
+      latency: "100ms"
+      jitter: "50ms"
+    duration: "2m"
+```
+</CodeGroup>
+
+### Pod Chaos During Business Hours
+
+<CodeGroup>
+```yaml Business Hours Schedule
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: business-hours-pod-chaos
+spec:
+  schedule: "0 9-17 * * 1-5"  # 9 AM - 5 PM, Monday-Friday
+  type: PodChaos
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  podChaos:
+    action: pod-failure
+    mode: fixed
+    value: "1"
+    selector:
+      namespaces:
+        - staging
+      labelSelectors:
+        "environment": "test"
+    duration: "5m"
+```
+</CodeGroup>
+
+### Stress Chaos Every 30 Seconds
+
+<CodeGroup>
+```yaml High-Frequency Stress
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: frequent-stress-test
+spec:
+  schedule: "@every 30s"
+  type: StressChaos
+  concurrencyPolicy: Allow  # Allow overlapping executions
+  historyLimit: 20
+  stressChaos:
+    mode: one
+    selector:
+      namespaces:
+        - load-test
+    stressors:
+      memory:
+        workers: 4
+        size: "256MB"
+    duration: "20s"
+```
+</CodeGroup>
+
+### Daily Database Chaos
+
+<CodeGroup>
+```yaml Daily Schedule
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: daily-io-chaos
+spec:
+  schedule: "0 2 * * *"  # 2 AM daily
+  type: IOChaos
+  concurrencyPolicy: Forbid
+  ioChaos:
+    action: latency
+    mode: all
+    selector:
+      namespaces:
+        - database
+      labelSelectors:
+        "app": "postgres"
+    volumePath: /var/lib/postgresql/data
+    delay: "100ms"
+    duration: "10m"
+```
+</CodeGroup>
+
+## Schedule Status
+
+<ResponseField name="status" type="ScheduleStatus">
+  Current state of the schedule.
+
+  <Expandable title="properties">
+    <ResponseField name="active" type="[]corev1.ObjectReference">
+      List of currently running chaos experiments created by this schedule.
+    </ResponseField>
+    
+    <ResponseField name="lastScheduleTime" type="metav1.Time">
+      Time when the schedule last created a chaos experiment.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Managing Schedules
+
+### Creating a Schedule
+
+<CodeGroup>
+```bash kubectl
+kubectl apply -f schedule.yaml
+```
+
+```bash Verify Creation
+kubectl get schedule -n chaos-mesh
+```
+</CodeGroup>
+
+### Viewing Schedule Status
+
+<CodeGroup>
+```bash Get Schedule Details
+kubectl get schedule my-schedule -n chaos-mesh -o yaml
+```
+
+```bash List Active Experiments
+kubectl get podchaos -l chaos-mesh.org/controlled-by=my-schedule
+```
+</CodeGroup>
+
+### Pausing a Schedule
+
+You can pause a schedule without deleting it by adding a pause annotation:
+
+<CodeGroup>
+```bash Pause Schedule
+kubectl annotate schedule my-schedule \
+  chaos-mesh.org/pause=true -n chaos-mesh
+```
+
+```bash Resume Schedule
+kubectl annotate schedule my-schedule \
+  chaos-mesh.org/pause- -n chaos-mesh
+```
+</CodeGroup>
+
+### Deleting a Schedule
+
+<CodeGroup>
+```bash Delete Schedule
+kubectl delete schedule my-schedule -n chaos-mesh
+```
+</CodeGroup>
+
+<Note>
+Deleting a schedule does not automatically delete chaos experiments that are currently running. Those will complete based on their duration settings.
+</Note>
+
+## Schedules in Workflows
+
+You can embed scheduled chaos within workflow templates:
+
+<CodeGroup>
+```yaml Schedule in Workflow
+templates:
+  - name: scheduled-pod-chaos
+    templateType: Schedule
+    deadline: 60s
+    schedule:
+      schedule: "@every 5s"
+      concurrencyPolicy: Allow
+      type: PodChaos
+      podChaos:
+        action: pod-kill
+        mode: one
+        selector:
+          labelSelectors:
+            "app": "web"
+```
+</CodeGroup>
+
+<Warning>
+Workflows cannot be scheduled. The Schedule CRD only supports chaos experiment types, not the Workflow type itself.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Choose Appropriate Intervals">
+    Balance testing frequency with system stability. Start with longer intervals and decrease gradually as confidence grows.
+  </Accordion>
+  
+  <Accordion title="Set History Limits">
+    Configure `historyLimit` to prevent accumulation of old experiment objects that consume cluster resources.
+  </Accordion>
+  
+  <Accordion title="Use Forbid for Safety">
+    Default to `concurrencyPolicy: Forbid` to prevent overlapping chaos experiments that could compound failures.
+  </Accordion>
+  
+  <Accordion title="Consider Time Zones">
+    Cron schedules use the timezone of the Chaos Mesh controller. Ensure your schedule accounts for the controller's timezone.
+  </Accordion>
+  
+  <Accordion title="Monitor Schedule Health">
+    Track schedule execution through the dashboard or Prometheus metrics to detect missed executions or failures.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="diagram-project" href="/operations/workflows">
+    Combine scheduled chaos with complex workflow orchestration
+  </Card>
+  
+  <Card title="Status Checks" icon="check" href="/operations/status-check">
+    Add automated validation to scheduled experiments
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-bar" href="/operations/monitoring">
+    Track schedule metrics with Prometheus
+  </Card>
+  
+  <Card title="Dashboard" icon="chart-line" href="/operations/dashboard">
+    View and manage schedules through the web UI
+  </Card>
+</CardGroup>

@@ -1,0 +1,523 @@
+---
+title: Build System
+description: Understanding the Chaos Mesh build infrastructure and make targets
+---
+
+Chaos Mesh uses a sophisticated build system based on Make and containerized build environments. This guide explains the build infrastructure and available make targets.
+
+## Build Architecture
+
+The build system uses two specialized Docker images for different purposes:
+
+### Build Environment (`build-env`)
+
+Minimal environment for compiling binaries:
+
+```bash
+make image-build-env    # Build the build-env image
+make enter-buildenv     # Enter interactive shell in build-env
+```
+
+Use this for:
+- Compiling Go binaries
+- Building C components (pause, fakeclock)
+- Creating production artifacts
+
+### Development Environment (`dev-env`)
+
+Full development environment with all tools:
+
+```bash
+make image-dev-env     # Build the dev-env image
+make enter-devenv      # Enter interactive shell in dev-env
+```
+
+Use this for:
+- Code generation (CRDs, clients, deepcopy)
+- Linting and formatting
+- Running tests
+- Building protobuf definitions
+- Generating Swagger specs
+
+<Note>
+Each branch has its own image tag for build-env and dev-env, automatically determined by `hack/env-image-tag.sh`.
+</Note>
+
+## Environment Variables
+
+### Build Configuration
+
+```bash
+# Image tag for built images (default: latest)
+export IMAGE_TAG=v2.6.0
+
+# Enable debug symbols (default: disabled)
+export DEBUGGER=1
+
+# Include UI in builds (default: disabled)
+export UI=1
+
+# Go proxy for dependency downloads
+export GOPROXY=https://proxy.golang.org,direct
+
+# Build cache directory
+export GO_BUILD_CACHE=/path/to/.cache/chaos-mesh
+
+# Target platform (amd64 or arm64)
+export TARGET_PLATFORM=amd64
+```
+
+## Core Build Targets
+
+### Building Everything
+
+```bash
+make all               # Build CRD manifests and all container images
+make image             # Build all component images
+make manifests/crd.yaml # Generate combined CRD manifest
+```
+
+### Building Components
+
+#### Container Images
+
+```bash
+# Build individual component images
+make image-chaos-daemon
+make image-chaos-mesh              # Controller manager
+make image-chaos-dashboard
+make image-chaos-dlv               # Debugger (when DEBUGGER=1)
+make image-e2e-helper              # E2E test helper
+```
+
+#### Local Binaries
+
+Build binaries without Docker for local development:
+
+```bash
+make local/chaos-daemon
+make local/chaos-controller-manager
+make local/chaos-dashboard
+```
+
+<Warning>
+Local builds require all development dependencies installed on your host. Using containerized builds (`make image`) is recommended for consistency.
+</Warning>
+
+### Building the UI
+
+The dashboard UI requires pnpm and is optional:
+
+```bash
+# Set UI=1 to include UI in builds
+UI=1 make ui
+
+# Or build manually
+cd ui
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+The UI assets are embedded into the chaos-dashboard binary using `hack/embed_ui_assets.sh`.
+
+## Code Generation Targets
+
+Chaos Mesh generates significant code from CRD definitions and protobuf schemas.
+
+### Complete Generation
+
+```bash
+make generate          # Run all generation steps
+```
+
+This includes:
+- CRD manifests (`make config`)
+- Deepcopy methods (`make generate-deepcopy`)
+- Kubernetes clients (`make generate-client`)
+- Chaos builder code (`make chaos-build`)
+- Swagger specs (`make swagger_spec`)
+- Combined CRD YAML (`make manifests/crd.yaml`)
+
+### Individual Generation Steps
+
+#### CRD Manifests
+
+```bash
+make config            # Generate CRD manifests with controller-gen
+```
+
+Generates:
+- `config/crd/bases/*.yaml` - Individual CRD files
+- `helm/chaos-mesh/crds/*.yaml` - Copies for Helm chart
+
+#### Deepcopy Methods
+
+```bash
+make generate-deepcopy # Generate DeepCopy methods for CRD types
+```
+
+Uses `controller-gen` to generate `zz_generated.deepcopy.go` files.
+
+#### Kubernetes Clients
+
+```bash
+make generate-client   # Generate all client code
+```
+
+Or individually:
+
+```bash
+make generate-clientset  # Generate versioned clientset
+make generate-lister     # Generate listers for CRDs
+make generate-informer   # Generate informers for CRDs
+```
+
+Generated code goes to:
+- `pkg/client/versioned/` - Clientset
+- `pkg/client/listers/` - Listers
+- `pkg/client/informers/` - Informers
+
+#### Chaos Builder
+
+```bash
+make chaos-build       # Generate chaos type implementations
+```
+
+Builds and runs `bin/chaos-builder` to generate boilerplate code for chaos types.
+
+#### Protocol Buffers
+
+```bash
+make proto             # Generate .go files from .proto files
+```
+
+Generates gRPC code for:
+- `pkg/chaosdaemon/pb/` - Chaos daemon protocol
+- `pkg/chaoskernel/pb/` - Chaos kernel protocol
+
+#### Swagger/OpenAPI
+
+```bash
+make swagger_spec      # Generate OpenAPI spec for dashboard API
+```
+
+Generates `pkg/dashboard/swaggerdocs/` for frontend consumption.
+
+#### Makefiles
+
+```bash
+make generate-makefile # Generate binary.generated.mk and container-image.generated.mk
+```
+
+These generated makefiles define targets for building all binaries and images.
+
+## Quality Checks
+
+### Complete Check Suite
+
+```bash
+make check             # Run all prerequisite checks for PR
+```
+
+This runs:
+1. `make generate` - Regenerate all code
+2. `make vet` - Run `go vet`
+3. `make lint` - Run `revive` linter
+4. `make fmt` - Format code with `goimports`
+5. `make tidy` - Ensure `go.mod` is tidy
+6. `make install.sh` - Regenerate install script
+7. `make helm-values-schema` - Update Helm schema
+
+### Individual Quality Targets
+
+#### Formatting
+
+```bash
+make fmt               # Format code with goimports
+```
+
+Runs `goimports -w -l -local github.com/chaos-mesh/chaos-mesh` on all Go files except generated code.
+
+#### Linting
+
+```bash
+make lint              # Lint with revive
+```
+
+Uses configuration from `revive.toml`.
+
+#### Vetting
+
+```bash
+make vet               # Run go vet
+```
+
+Runs static analysis to find potential bugs.
+
+#### Tidy Dependencies
+
+```bash
+make tidy              # Run go mod tidy in all modules
+```
+
+<Note>
+This runs `go mod tidy` in multiple directories:
+- Root directory
+- `api/`
+- `e2e-test/`
+- `e2e-test/cmd/e2e_helper/`
+
+All modules must remain tidy to pass CI.
+</Note>
+
+#### Security Scanning
+
+```bash
+make gosec-scan        # Run security scanner
+```
+
+Uses `gosec` to find common security issues.
+
+## Testing Targets
+
+### Unit Tests
+
+```bash
+make test              # Run all unit tests with coverage
+```
+
+This:
+1. Enables failpoint stubs
+2. Runs tests with `CGO_ENABLED=1`
+3. Generates coverage report (`cover.out`)
+4. Disables failpoint stubs
+
+### Coverage Reports
+
+```bash
+make coverage          # Generate HTML coverage report
+```
+
+Creates:
+- `cover.json` - JSON coverage data
+- `cover.xml` - XML coverage data
+- `cover/index.html` - HTML coverage report
+
+### E2E Tests
+
+```bash
+make e2e-build         # Build e2e test binaries
+make e2e               # Run e2e tests in current cluster
+```
+
+With custom options:
+
+```bash
+GINKGO_FLAGS="-v -focus=PodChaos" make e2e
+PAUSE_IMAGE=custom/pause:latest make e2e
+```
+
+### Failpoint Control
+
+Failpoints enable fault injection in tests:
+
+```bash
+make failpoint-enable  # Enable failpoint stubs
+make failpoint-disable # Disable failpoint stubs
+```
+
+<Warning>
+Always disable failpoints after testing. Don't commit code with failpoints enabled.
+</Warning>
+
+### Test Utilities
+
+```bash
+make test-utils        # Build test utility binaries
+```
+
+Builds:
+- `bin/test/timer` - Time testing utility
+- `bin/test/multithread_tracee` - Multi-thread tracing test
+- `pkg/time/fakeclock/*.o` - Fake clock objects
+
+## Advanced Targets
+
+### Special Components
+
+#### Pause Binary
+
+```bash
+make images/chaos-daemon/bin/pause
+```
+
+Builds the minimal pause binary from `hack/pause.c`.
+
+#### Watchmaker
+
+```bash
+make watchmaker        # Build time injection tool
+```
+
+Builds the watchmaker binary for time chaos simulation.
+
+### Installation Scripts
+
+```bash
+make install.sh        # Generate install.sh script
+```
+
+Runs `hack/update_install_script.sh` to create the one-line installer.
+
+### Helm Values Schema
+
+```bash
+make helm-values-schema # Generate JSON schema for values.yaml
+```
+
+Creates `helm/chaos-mesh/values.schema.json` from `helm/chaos-mesh/values.yaml`.
+
+## Cleanup
+
+```bash
+make clean             # Remove all build artifacts
+make clean-binary      # Remove built binaries
+make clean-image-built # Remove image build markers
+```
+
+## Build System Internals
+
+### Containerized Shell Execution
+
+Many targets use `SHELL:=$(RUN_IN_DEV_SHELL)` or `SHELL:=$(RUN_IN_BUILD_SHELL)` to run commands inside Docker containers.
+
+This is determined by:
+
+```bash
+$(ROOT)/build/get_env_shell.py dev-env
+$(ROOT)/build/get_env_shell.py build-env
+```
+
+### Generated Makefiles
+
+The build system includes generated makefiles:
+
+- `binary.generated.mk` - Binary build targets
+- `container-image.generated.mk` - Container image targets
+- `local-binary.generated.mk` - Local binary targets
+
+Generate these with:
+
+```bash
+make generate-makefile
+```
+
+### LDFLAGS
+
+Build flags are set via:
+
+```bash
+export LDFLAGS="$(./hack/version.sh)"
+```
+
+This includes:
+- Version information
+- Git commit hash
+- Build timestamp
+- `-s -w` for stripping (unless `DEBUGGER=1`)
+
+## Common Build Workflows
+
+### Development Iteration
+
+```bash
+# Make code changes
+vim pkg/controller/.../*.go
+
+# Regenerate if needed
+make generate
+
+# Run checks
+make check
+
+# Run tests
+make test
+
+# Build locally for quick testing
+make local/chaos-controller-manager
+```
+
+### Full PR Preparation
+
+```bash
+# Complete quality check
+make check
+
+# Full test suite
+make test
+
+# Build all images
+make image
+
+# E2E tests
+make e2e-build
+make e2e
+```
+
+### Release Build
+
+```bash
+# Set version
+export IMAGE_TAG=v2.6.0
+
+# Include UI
+export UI=1
+
+# Build everything
+make all
+
+# Build E2E helper
+make e2e-image
+```
+
+## Troubleshooting
+
+### Build Cache Issues
+
+Clear the build cache:
+
+```bash
+rm -rf .cache/chaos-mesh
+```
+
+### Environment Image Issues
+
+Rebuild environment images:
+
+```bash
+IMAGE_BUILD_ENV_BUILD=1 make image-build-env
+IMAGE_DEV_ENV_BUILD=1 make image-dev-env
+```
+
+### Module Issues
+
+Ensure all modules are tidy:
+
+```bash
+make tidy
+```
+
+### Generated Code Out of Sync
+
+Regenerate everything:
+
+```bash
+make generate
+git diff  # Check what changed
+```
+
+## Next Steps
+
+- Review [Developer Guide](/development/developer-guide) for development workflows
+- Understand [Controller Design Principles](/concepts/architecture)
+- Check [Contributing Guidelines](/development/contributing) for PR process

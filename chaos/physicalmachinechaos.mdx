@@ -1,0 +1,372 @@
+---
+title: PhysicalMachineChaos
+description: Inject chaos into physical machines and bare-metal servers
+---
+
+PhysicalMachineChaos allows you to inject various types of faults into physical machines, bare-metal servers, or virtual machines outside of Kubernetes. This is useful for testing how your Kubernetes applications handle failures in external infrastructure.
+
+## Actions
+
+PhysicalMachineChaos supports a wide range of actions across multiple categories:
+
+### Stress Actions
+- **stress-cpu**: Stress CPU resources
+- **stress-mem**: Stress memory resources
+
+### Disk Actions  
+- **disk-read-payload**: Generate disk read I/O
+- **disk-write-payload**: Generate disk write I/O
+- **disk-fill**: Fill disk space
+
+### Network Actions
+- **network-corrupt**: Corrupt network packets
+- **network-duplicate**: Duplicate network packets
+- **network-loss**: Drop network packets
+- **network-delay**: Add network latency
+- **network-partition**: Create network partitions
+- **network-dns**: Manipulate DNS responses
+- **network-bandwidth**: Limit network bandwidth
+- **network-flood**: Flood network with traffic
+- **network-down**: Take network interface down
+
+### Process Actions
+- **process**: Kill or signal processes
+
+### JVM Actions
+- **jvm-exception**: Throw exceptions in JVM
+- **jvm-gc**: Trigger garbage collection
+- **jvm-latency**: Add method latency
+- **jvm-return**: Modify return values
+- **jvm-stress**: Stress JVM resources
+- **jvm-rule-data**: Custom Byteman rules
+- **jvm-mysql**: MySQL JDBC fault injection
+
+### Time Actions
+- **clock**: Skew system clock
+
+### Redis Actions
+- **redis-expiration**: Set key expiration
+- **redis-penetration**: Cache penetration attack
+- **redis-cacheLimit**: Limit cache size
+- **redis-restart**: Restart Redis Sentinel
+- **redis-stop**: Stop Redis Sentinel
+
+### Kafka Actions
+- **kafka-fill**: Fill Kafka disk
+- **kafka-flood**: Flood Kafka with messages
+- **kafka-io**: Make Kafka non-readable/writable
+
+### HTTP Actions
+- **http-abort**: Abort HTTP requests
+- **http-delay**: Add HTTP latency
+- **http-config**: Modify HTTP proxy config
+- **http-request**: Send HTTP requests
+
+### File Actions
+- **file-create**: Create files/directories
+- **file-modify**: Modify file permissions
+- **file-delete**: Delete files/directories
+- **file-rename**: Rename files
+- **file-append**: Append data to files
+- **file-replace**: Replace file content
+
+### VM Actions
+- **vm**: VM-related operations
+
+### Custom Actions
+- **user_defined**: Execute custom commands
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The physical machine chaos action to perform. See the Actions section above for all available options.
+</ParamField>
+
+<ParamField path="spec.address" type="array" deprecated>
+  List of physical machine addresses. Deprecated - use `selector` instead.
+</ParamField>
+
+<ParamField path="spec.selector" type="object">
+  Selector to choose physical machines.
+  
+  <Expandable title="Selector Fields">
+    <ParamField path="namespaces" type="array">
+      Namespaces containing PhysicalMachine objects.
+    </ParamField>
+    
+    <ParamField path="physicalMachines" type="object">
+      Map of namespace to PhysicalMachine object names.
+      
+      **Example:** `{"default": ["machine-1", "machine-2"]}`
+    </ParamField>
+    
+    <ParamField path="labelSelectors" type="object">
+      Label selectors to filter PhysicalMachine objects.
+    </ParamField>
+    
+    <ParamField path="annotationSelectors" type="object">
+      Annotation selectors to filter PhysicalMachine objects.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="spec.mode" type="string" required>
+  Selection mode for target machines.
+  
+  **Options:** `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+</ParamField>
+
+<ParamField path="spec.value" type="string">
+  Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action (e.g., `30s`, `5m`, `1h`).
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## Action-Specific Parameters
+
+Each action has specific parameters. Here are some common examples:
+
+### Stress CPU
+
+<ParamField path="spec.stress-cpu.load" type="integer">
+  CPU load percentage per worker (0-100).
+</ParamField>
+
+<ParamField path="spec.stress-cpu.workers" type="integer">
+  Number of workers to apply the stressor.
+</ParamField>
+
+<ParamField path="spec.stress-cpu.options" type="array">
+  Additional stress-ng options.
+</ParamField>
+
+### Network Delay
+
+<ParamField path="spec.network-delay.latency" type="string">
+  Egress delay time (e.g., `100ms`, `1s`).
+</ParamField>
+
+<ParamField path="spec.network-delay.jitter" type="string">
+  Jitter time.
+</ParamField>
+
+<ParamField path="spec.network-delay.correlation" type="string">
+  Correlation percentage.
+</ParamField>
+
+<ParamField path="spec.network-delay.device" type="string">
+  Network interface to impact.
+</ParamField>
+
+<ParamField path="spec.network-delay.ip-address" type="string">
+  Target IP addresses.
+</ParamField>
+
+### Process
+
+<ParamField path="spec.process.process" type="string">
+  Process name or PID.
+</ParamField>
+
+<ParamField path="spec.process.signal" type="integer">
+  Signal number to send.
+</ParamField>
+
+<ParamField path="spec.process.recoverCmd" type="string">
+  Command to run when recovering.
+</ParamField>
+
+### User Defined
+
+<ParamField path="spec.user_defined.attackCmd" type="string">
+  Command to execute for attack.
+</ParamField>
+
+<ParamField path="spec.user_defined.recoverCmd" type="string">
+  Command to execute for recovery.
+</ParamField>
+
+## Prerequisites
+
+### PhysicalMachine Object
+
+You must first create PhysicalMachine objects representing your physical infrastructure:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachine
+metadata:
+  name: physical-machine-example
+  namespace: default
+spec:
+  address: 192.168.1.100:31767
+```
+
+### Chaosd Service
+
+Each physical machine must run the [Chaosd](https://chaos-mesh.org/docs/simulate-physical-machine-chaos/) service, which:
+- Runs as a daemon on the physical machine
+- Listens for chaos commands from Chaos Mesh
+- Executes the requested chaos actions
+- Reports status back to Chaos Mesh
+
+Install Chaosd on your physical machines before using PhysicalMachineChaos.
+
+## Examples
+
+### Network Delay on Physical Machine
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: physical-network-delay
+  namespace: chaos-mesh
+spec:
+  action: network-delay
+  mode: one
+  selector:
+    physicalMachines:
+      default:
+        - physical-machine-example
+  network-delay:
+    device: ens33
+    ip-address: 140.82.112.3
+    latency: 1000ms
+  duration: '10m'
+```
+
+This example adds 1000ms of latency to traffic going to `140.82.112.3` on the `ens33` network interface.
+
+### Stress CPU on Physical Machines
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: physical-cpu-stress
+  namespace: chaos-mesh
+spec:
+  action: stress-cpu
+  mode: all
+  selector:
+    labelSelectors:
+      env: production
+      role: database
+  stress-cpu:
+    load: 80
+    workers: 4
+  duration: '5m'
+```
+
+This example stresses CPU at 80% load using 4 workers on all physical machines with matching labels.
+
+### Kill Process
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: kill-process
+  namespace: chaos-mesh
+spec:
+  action: process
+  mode: one
+  selector:
+    physicalMachines:
+      default:
+        - physical-machine-1
+  process:
+    process: nginx
+    signal: 9
+    recoverCmd: systemctl start nginx
+  duration: '2m'
+```
+
+This example kills the nginx process (signal 9) and restarts it after 2 minutes using systemctl.
+
+### Disk Fill
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: disk-fill
+  namespace: chaos-mesh
+spec:
+  action: disk-fill
+  mode: one
+  selector:
+    physicalMachines:
+      default:
+        - storage-server
+  disk-fill:
+    path: /mnt/data
+    size: 10G
+    fill-by-fallocate: true
+  duration: '3m'
+```
+
+This example fills 10GB of disk space at `/mnt/data` using fallocate.
+
+### Custom User Defined Action
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PhysicalMachineChaos
+metadata:
+  name: custom-chaos
+  namespace: chaos-mesh
+spec:
+  action: user_defined
+  mode: one
+  selector:
+    physicalMachines:
+      default:
+        - app-server
+  user_defined:
+    attackCmd: "iptables -A OUTPUT -p tcp --dport 443 -j DROP"
+    recoverCmd: "iptables -D OUTPUT -p tcp --dport 443 -j DROP"
+  duration: '5m'
+```
+
+This example uses custom iptables commands to block outgoing HTTPS traffic.
+
+## Implementation Details
+
+PhysicalMachineChaos works by:
+1. Selecting PhysicalMachine objects based on the selector
+2. Communicating with the Chaosd service running on each selected machine
+3. Sending the chaos action and parameters to Chaosd
+4. Chaosd executes the action locally on the physical machine
+5. After the duration expires, Chaosd executes recovery actions
+
+Source: `api/v1alpha1/physical_machine_chaos_types.go:22-773`
+
+## Selector Modes
+
+The `mode` field determines how many physical machines are selected:
+
+- **one**: Select one random machine
+- **all**: Select all matching machines
+- **fixed**: Select a fixed number (specified in `value`)
+- **fixed-percent**: Select a percentage (specified in `value`)
+- **random-max-percent**: Select up to a random percentage (specified in `value`)
+
+Source: `api/v1alpha1/physical_machine_chaos_types.go:129-139`
+
+## Important Notes
+
+- Chaosd must be installed and running on all target physical machines
+- Ensure proper network connectivity between Chaos Mesh and Chaosd
+- Many actions require root/elevated privileges on the physical machine
+- Test in non-production environments first
+- The `address` field is deprecated; use PhysicalMachine objects with selectors instead
+- For network actions, ensure you know the correct network interface names
+- Some actions (like `user_defined`) can be dangerous if not used carefully

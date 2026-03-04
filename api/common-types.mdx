@@ -1,0 +1,322 @@
+---
+title: Common Types
+description: Shared types and structures used across Chaos Mesh APIs
+---
+
+Chaos Mesh defines several common types that are shared across different chaos experiment CRDs. Understanding these types is essential for configuring chaos experiments.
+
+## Selector Types
+
+### PodSelector
+
+Selects which pods to target for chaos injection.
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Pod selection criteria
+</ParamField>
+
+<ParamField path="mode" type="SelectorMode" required>
+  Mode to run chaos action. 
+  
+  **Enum values:**
+  - `one` - Select one random pod
+  - `all` - Select all matching pods
+  - `fixed` - Select a fixed number of pods
+  - `fixed-percent` - Select a fixed percentage of pods
+  - `random-max-percent` - Select up to a random percentage of pods
+</ParamField>
+
+<ParamField path="value" type="string">
+  Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+  
+  - For `fixed`: Integer number of pods (e.g., "3")
+  - For `fixed-percent`: Percentage from 0-100 (e.g., "50")
+  - For `random-max-percent`: Max percentage from 0-100 (e.g., "75")
+</ParamField>
+
+### PodSelectorSpec
+
+Defines the criteria for selecting pods.
+
+<ParamField path="namespaces" type="[]string">
+  Namespaces to select pods from. If empty, defaults to the chaos experiment's namespace.
+</ParamField>
+
+<ParamField path="labelSelectors" type="map[string]string">
+  Label-based selector. Select pods matching all specified labels.
+  
+  ```yaml
+  labelSelectors:
+    app: nginx
+    environment: production
+  ```
+</ParamField>
+
+<ParamField path="annotationSelectors" type="map[string]string">
+  Annotation-based selector. Select pods matching all specified annotations.
+</ParamField>
+
+<ParamField path="fieldSelectors" type="map[string]string">
+  Field-based selector using Kubernetes field selectors.
+  
+  ```yaml
+  fieldSelectors:
+    status.phase: Running
+  ```
+</ParamField>
+
+<ParamField path="expressionSelectors" type="[]LabelSelectorRequirement">
+  Set-based label selector expressions for advanced selection logic.
+</ParamField>
+
+<ParamField path="nodes" type="[]string">
+  Node names. Select only pods running on these nodes.
+  
+  ```yaml
+  nodes:
+    - node-1
+    - node-2
+  ```
+</ParamField>
+
+<ParamField path="pods" type="map[string][]string">
+  Explicitly select pods by namespace and name.
+  
+  ```yaml
+  pods:
+    default:
+      - pod-1
+      - pod-2
+    kube-system:
+      - coredns-abc123
+  ```
+</ParamField>
+
+<ParamField path="nodeSelectors" type="map[string]string">
+  Select pods on nodes matching these label selectors.
+  
+  ```yaml
+  nodeSelectors:
+    node-role.kubernetes.io/worker: "true"
+  ```
+</ParamField>
+
+<ParamField path="podPhaseSelectors" type="[]string">
+  Select pods in specific phases.
+  
+  **Valid values:** `Pending`, `Running`, `Succeeded`, `Failed`, `Unknown`
+  
+  ```yaml
+  podPhaseSelectors:
+    - Running
+  ```
+</ParamField>
+
+### ContainerSelector
+
+Extends `PodSelector` to select specific containers within pods.
+
+<ParamField path="PodSelector" type="PodSelector" required>
+  All fields from PodSelector are available (inline).
+</ParamField>
+
+<ParamField path="containerNames" type="[]string">
+  List of container names to affect. If not set, the first container will be selected.
+  
+  ```yaml
+  containerNames:
+    - main
+    - sidecar
+  ```
+</ParamField>
+
+## Status Types
+
+### ChaosStatus
+
+Represents the current status of a chaos experiment.
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Current global conditions of the chaos experiment.
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus" required>
+  Last known experiment state.
+</ResponseField>
+
+### ChaosCondition
+
+<ResponseField name="type" type="ChaosConditionType" required>
+  Type of condition.
+  
+  **Values:**
+  - `Selected` - Targets have been selected
+  - `AllInjected` - All targets have been injected
+  - `AllRecovered` - All targets have been recovered
+  - `Paused` - Experiment is paused
+</ResponseField>
+
+<ResponseField name="status" type="ConditionStatus" required>
+  Status of the condition: `True`, `False`, or `Unknown`
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Human-readable reason for the condition.
+</ResponseField>
+
+### ExperimentStatus
+
+<ResponseField name="desiredPhase" type="DesiredPhase">
+  Target phase for the experiment.
+  
+  **Values:**
+  - `Run` - Make all targets injected
+  - `Stop` - Make all targets not injected
+</ResponseField>
+
+<ResponseField name="records" type="[]Record">
+  Tracking records for running status (stored in `containerRecords` field).
+</ResponseField>
+
+### Record
+
+Tracks the injection status of a single target.
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for this record.
+</ResponseField>
+
+<ResponseField name="selectorKey" type="string" required>
+  Key identifying which selector this record belongs to.
+</ResponseField>
+
+<ResponseField name="phase" type="Phase" required>
+  Current phase of the target.
+  
+  **Values:**
+  - `Not Injected` - Target is not injected yet
+  - `Injected` - Target is currently injected
+</ResponseField>
+
+<ResponseField name="injectedCount" type="int" required>
+  Counter of successful injections.
+</ResponseField>
+
+<ResponseField name="recoveredCount" type="int" required>
+  Counter of successful recoveries.
+</ResponseField>
+
+<ResponseField name="events" type="[]RecordEvent">
+  Essential details about injections and recoveries.
+</ResponseField>
+
+### RecordEvent
+
+<ResponseField name="type" type="RecordEventType" required>
+  Event outcome.
+  
+  **Values:**
+  - `Succeeded` - Operation succeeded
+  - `Failed` - Operation failed
+</ResponseField>
+
+<ResponseField name="operation" type="RecordEventOperation" required>
+  Operation being performed.
+  
+  **Values:**
+  - `Apply` - Injecting chaos
+  - `Recover` - Recovering from chaos
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Detail message, such as failure reason.
+</ResponseField>
+
+<ResponseField name="timestamp" type="*metav1.Time" required>
+  When the event was created.
+</ResponseField>
+
+## Duration Format
+
+Many chaos experiments accept a `duration` field specifying how long the chaos should last.
+
+**Format:** A possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix.
+
+**Valid units:** `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
+
+**Examples:**
+- `"300ms"` - 300 milliseconds
+- `"1.5h"` - 1.5 hours
+- `"2h45m"` - 2 hours 45 minutes
+- `"-1.5h"` - Negative 1.5 hours (for TimeChaos offset)
+
+```yaml
+spec:
+  duration: "30s"
+```
+
+## Remote Cluster
+
+Many chaos types support targeting remote clusters.
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where chaos will be deployed. If not specified, chaos is applied to the local cluster.
+</ParamField>
+
+## Selector Mode Examples
+
+### Select One Random Pod
+
+```yaml
+selector:
+  namespaces:
+    - default
+  labelSelectors:
+    app: myapp
+mode: one
+```
+
+### Select All Matching Pods
+
+```yaml
+selector:
+  namespaces:
+    - production
+  labelSelectors:
+    tier: backend
+mode: all
+```
+
+### Select Fixed Number of Pods
+
+```yaml
+selector:
+  namespaces:
+    - default
+mode: fixed
+value: "3"
+```
+
+### Select Percentage of Pods
+
+```yaml
+selector:
+  namespaces:
+    - default
+  labelSelectors:
+    app: api
+mode: fixed-percent
+value: "50"  # 50% of matching pods
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="PodChaos API" icon="cube" href="/api/podchaos-api">
+    Pod-level chaos injection
+  </Card>
+  
+  <Card title="NetworkChaos API" icon="network-wired" href="/api/networkchaos-api">
+    Network fault injection
+  </Card>
+</CardGroup>

@@ -1,0 +1,574 @@
+---
+title: ChaosDaemon API Reference
+description: Detailed message type reference for ChaosDaemon gRPC API
+---
+
+## Overview
+
+This page documents the detailed message types used by the ChaosDaemon gRPC service. For service method documentation, see [gRPC API Overview](/api/grpc-overview).
+
+## Network Chaos Types
+
+### TcsRequest
+
+<ParamField path="tcs" type="[]Tc">
+  List of traffic control configurations to apply.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container network namespace.
+</ParamField>
+
+### Tc
+
+<ParamField path="type" type="Type">
+  Traffic control type: `NETEM` or `BANDWIDTH`.
+</ParamField>
+
+<ParamField path="netem" type="Netem">
+  Network emulation configuration (when type is NETEM).
+</ParamField>
+
+<ParamField path="tbf" type="Tbf">
+  Token bucket filter configuration (when type is BANDWIDTH).
+</ParamField>
+
+<ParamField path="ipset" type="string">
+  IPSet name for filtering.
+</ParamField>
+
+<ParamField path="protocol" type="string">
+  Protocol to filter (tcp, udp, icmp, etc.).
+</ParamField>
+
+<ParamField path="source_port" type="string">
+  Source port or port range.
+</ParamField>
+
+<ParamField path="egress_port" type="string">
+  Egress/destination port or port range.
+</ParamField>
+
+<ParamField path="device" type="string">
+  Network device name.
+</ParamField>
+
+### Netem
+
+Network emulation parameters for delay, loss, corruption, etc.
+
+<ParamField path="time" type="string">
+  Base delay time (e.g., "100ms").
+</ParamField>
+
+<ParamField path="jitter" type="string">
+  Delay variation/jitter (e.g., "10ms").
+</ParamField>
+
+<ParamField path="delay_corr" type="float">
+  Delay correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Queue limit in packets.
+</ParamField>
+
+<ParamField path="loss" type="float">
+  Packet loss percentage (0-100).
+</ParamField>
+
+<ParamField path="loss_corr" type="float">
+  Loss correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="gap" type="uint32">
+  Gap for loss pattern.
+</ParamField>
+
+<ParamField path="duplicate" type="float">
+  Packet duplication percentage (0-100).
+</ParamField>
+
+<ParamField path="duplicate_corr" type="float">
+  Duplication correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="reorder" type="float">
+  Packet reordering percentage (0-100).
+</ParamField>
+
+<ParamField path="reorder_corr" type="float">
+  Reordering correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="corrupt" type="float">
+  Packet corruption percentage (0-100).
+</ParamField>
+
+<ParamField path="corrupt_corr" type="float">
+  Corruption correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="parent" type="TcHandle">
+  Parent qdisc handle.
+</ParamField>
+
+<ParamField path="handle" type="TcHandle">
+  This qdisc handle.
+</ParamField>
+
+<ParamField path="rate" type="string">
+  Rate limit (e.g., "1mbit").
+</ParamField>
+
+### Tbf
+
+Token Bucket Filter for bandwidth limiting.
+
+<ParamField path="rate" type="string">
+  Rate limit (e.g., "1mbit", "100kbit").
+</ParamField>
+
+<ParamField path="limit" type="uint32">
+  Queue size limit in bytes.
+</ParamField>
+
+<ParamField path="buffer" type="uint32">
+  Token bucket buffer size.
+</ParamField>
+
+<ParamField path="peak_rate" type="uint64">
+  Peak rate for burst traffic.
+</ParamField>
+
+<ParamField path="min_burst" type="uint32">
+  Minimum burst size.
+</ParamField>
+
+### TcHandle
+
+<ParamField path="major" type="uint32">
+  Major number of tc handle.
+</ParamField>
+
+<ParamField path="minor" type="uint32">
+  Minor number of tc handle.
+</ParamField>
+
+### IPSetsRequest
+
+<ParamField path="ipsets" type="[]IPSet">
+  List of IPSet configurations.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container network namespace.
+</ParamField>
+
+### IPSet
+
+<ParamField path="name" type="string">
+  IPSet name.
+</ParamField>
+
+<ParamField path="cidrs" type="[]string">
+  List of CIDR ranges.
+</ParamField>
+
+<ParamField path="cidr_and_ports" type="[]CidrAndPort">
+  List of CIDR and port combinations.
+</ParamField>
+
+<ParamField path="set_names" type="[]string">
+  List of IPSet names for set-of-sets.
+</ParamField>
+
+<ParamField path="type" type="string">
+  IPSet type (hash:ip, hash:net, hash:ip,port, etc.).
+</ParamField>
+
+### CidrAndPort
+
+<ParamField path="cidr" type="string">
+  CIDR range.
+</ParamField>
+
+<ParamField path="port" type="uint32">
+  Port number.
+</ParamField>
+
+### IptablesChainsRequest
+
+<ParamField path="chains" type="[]Chain">
+  List of iptables chains to configure.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container network namespace.
+</ParamField>
+
+### Chain
+
+<ParamField path="name" type="string">
+  Chain name.
+</ParamField>
+
+<ParamField path="direction" type="Direction">
+  Chain direction: `INPUT` or `OUTPUT`.
+</ParamField>
+
+<ParamField path="ipsets" type="[]string">
+  IPSet names to match.
+</ParamField>
+
+<ParamField path="target" type="string">
+  Target action (DROP, ACCEPT, REJECT, etc.).
+</ParamField>
+
+<ParamField path="protocol" type="string">
+  Protocol to match (tcp, udp, icmp, all).
+</ParamField>
+
+<ParamField path="source_ports" type="string">
+  Source port or port range to match.
+</ParamField>
+
+<ParamField path="destination_ports" type="string">
+  Destination port or port range to match.
+</ParamField>
+
+<ParamField path="tcp_flags" type="string">
+  TCP flags to match.
+</ParamField>
+
+<ParamField path="device" type="string">
+  Network device to match.
+</ParamField>
+
+## Container Types
+
+### ContainerRequest
+
+<ParamField path="action" type="ContainerAction">
+  Container action to perform.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+### ContainerAction
+
+<ParamField path="action" type="Action">
+  Action type: `KILL` or `GETPID`.
+</ParamField>
+
+### ContainerResponse
+
+<ResponseField name="pid" type="uint32">
+  Process ID of container's main process.
+</ResponseField>
+
+## Stress Types
+
+### ExecStressRequest
+
+<ParamField path="scope" type="Scope">
+  Execution scope: `CONTAINER` (0) or `POD` (1).
+</ParamField>
+
+<ParamField path="target" type="string">
+  Target container or pod identifier.
+</ParamField>
+
+<ParamField path="cpuStressors" type="string">
+  CPU stressor arguments for stress-ng.
+</ParamField>
+
+<ParamField path="memoryStressors" type="string">
+  Memory stressor arguments for stress-ng.
+</ParamField>
+
+<ParamField path="oomScoreAdj" type="int32">
+  OOM score adjustment for stress process (-1000 to 1000).
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter target namespace.
+</ParamField>
+
+### ExecStressResponse
+
+<ResponseField name="cpuInstance" type="string">
+  CPU stress instance identifier (process name).
+</ResponseField>
+
+<ResponseField name="cpuStartTime" type="int64">
+  CPU stress start timestamp.
+</ResponseField>
+
+<ResponseField name="memoryInstance" type="string">
+  Memory stress instance identifier (process name).
+</ResponseField>
+
+<ResponseField name="memoryStartTime" type="int64">
+  Memory stress start timestamp.
+</ResponseField>
+
+<ResponseField name="cpuInstanceUid" type="string">
+  CPU stress unique identifier.
+</ResponseField>
+
+<ResponseField name="memoryInstanceUid" type="string">
+  Memory stress unique identifier.
+</ResponseField>
+
+### CancelStressRequest
+
+<ParamField path="cpuInstance" type="string">
+  CPU stress instance to cancel.
+</ParamField>
+
+<ParamField path="cpuStartTime" type="int64">
+  CPU stress start timestamp.
+</ParamField>
+
+<ParamField path="memoryInstance" type="string">
+  Memory stress instance to cancel.
+</ParamField>
+
+<ParamField path="memoryStartTime" type="int64">
+  Memory stress start timestamp.
+</ParamField>
+
+<ParamField path="cpuInstanceUid" type="string">
+  CPU stress unique identifier.
+</ParamField>
+
+<ParamField path="memoryInstanceUid" type="string">
+  Memory stress unique identifier.
+</ParamField>
+
+## I/O Chaos Types
+
+### ApplyIOChaosRequest
+
+<ParamField path="actions" type="string">
+  Serialized JSON string containing I/O chaos actions (IOChaosAction array).
+</ParamField>
+
+<ParamField path="volume" type="string">
+  Target volume mount path.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="instance" type="int64">
+  Instance ID for tracking (from previous injection or 0 for new).
+</ParamField>
+
+<ParamField path="startTime" type="int64">
+  Start timestamp (from previous injection or 0 for new).
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container mount namespace.
+</ParamField>
+
+<ParamField path="instance_uid" type="string">
+  Unique identifier for this injection.
+</ParamField>
+
+### ApplyIOChaosResponse
+
+<ResponseField name="instance" type="int64">
+  Instance ID for recovery (FUSE process PID).
+</ResponseField>
+
+<ResponseField name="startTime" type="int64">
+  Start timestamp for recovery.
+</ResponseField>
+
+<ResponseField name="instance_uid" type="string">
+  Unique identifier for tracking.
+</ResponseField>
+
+## HTTP Chaos Types
+
+### ApplyHttpChaosRequest
+
+<ParamField path="rules" type="string">
+  Serialized JSON string containing HTTP chaos rules.
+</ParamField>
+
+<ParamField path="proxy_ports" type="[]uint32">
+  List of ports to proxy for HTTP chaos.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="instance" type="int64">
+  Instance ID for tracking.
+</ParamField>
+
+<ParamField path="startTime" type="int64">
+  Start timestamp.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container network namespace.
+</ParamField>
+
+<ParamField path="instance_uid" type="string">
+  Unique identifier for this injection.
+</ParamField>
+
+<ParamField path="tls" type="string">
+  TLS configuration (serialized JSON).
+</ParamField>
+
+### ApplyHttpChaosResponse
+
+<ResponseField name="instance" type="int64">
+  Instance ID for recovery.
+</ResponseField>
+
+<ResponseField name="startTime" type="int64">
+  Start timestamp.
+</ResponseField>
+
+<ResponseField name="statusCode" type="int32">
+  HTTP status code (0 for success, non-zero for error).
+</ResponseField>
+
+<ResponseField name="error" type="string">
+  Error message if statusCode is non-zero.
+</ResponseField>
+
+<ResponseField name="instance_uid" type="string">
+  Unique identifier.
+</ResponseField>
+
+## Block Chaos Types
+
+### ApplyBlockChaosRequest
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="volume_path" type="string">
+  Target volume path.
+</ParamField>
+
+<ParamField path="action" type="Action">
+  Block chaos action: `Delay` (0).
+</ParamField>
+
+<ParamField path="delay" type="BlockDelaySpec">
+  Delay specification (when action is Delay).
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container mount namespace.
+</ParamField>
+
+### BlockDelaySpec
+
+<ParamField path="delay" type="int64">
+  Delay in nanoseconds.
+</ParamField>
+
+<ParamField path="correlation" type="double">
+  Correlation percentage (0-100).
+</ParamField>
+
+<ParamField path="jitter" type="int64">
+  Jitter in nanoseconds.
+</ParamField>
+
+### ApplyBlockChaosResponse
+
+<ResponseField name="injection_id" type="int32">
+  Injection ID for recovery.
+</ResponseField>
+
+### RecoverBlockChaosRequest
+
+<ParamField path="injection_id" type="int32">
+  Injection ID to recover (from ApplyBlockChaosResponse).
+</ParamField>
+
+## DNS Chaos Types
+
+### SetDNSServerRequest
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="dns_server" type="string">
+  DNS server IP address.
+</ParamField>
+
+<ParamField path="enable" type="bool">
+  Whether to enable (true) or disable (false) the DNS server override.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container network namespace.
+</ParamField>
+
+## JVM Chaos Types
+
+### InstallJVMRulesRequest
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="rule" type="string">
+  Byteman rule script content.
+</ParamField>
+
+<ParamField path="port" type="int32">
+  Byteman agent port.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container namespace.
+</ParamField>
+
+### UninstallJVMRulesRequest
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="rule" type="string">
+  Byteman rule script content to uninstall.
+</ParamField>
+
+<ParamField path="port" type="int32">
+  Byteman agent port.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter container namespace.
+</ParamField>

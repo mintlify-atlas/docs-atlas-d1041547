@@ -1,0 +1,246 @@
+---
+title: TimeChaos
+description: Simulate time skew and clock drift
+---
+
+TimeChaos allows you to shift time forward or backward for target pods to test how your application handles time-related issues, clock skew, and time synchronization problems.
+
+## Supported Actions
+
+TimeChaos provides time offset injection:
+
+- **Time Shift**: Offset system time by a specified duration (forward or backward)
+- **Clock Selection**: Target specific system clocks
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-shift-example
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  timeOffset: "-10m100ns"
+  duration: "30s"
+```
+
+## Spec Fields
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="timeOffset" type="string" required>
+  Time offset to inject. A possibly signed sequence of decimal numbers with unit suffix. Examples:
+  - `"10m"` - shift time forward by 10 minutes
+  - `"-1h"` - shift time backward by 1 hour
+  - `"5s500ms"` - shift time forward by 5.5 seconds
+  - `"-10m100ns"` - shift time backward by 10 minutes and 100 nanoseconds
+  
+  Valid time units: `ns`, `us` (or `µs`), `ms`, `s`, `m`, `h`
+</ParamField>
+
+<ParamField path="clockIds" type="string[]" default='["CLOCK_REALTIME"]'>
+  List of clock IDs to affect. Available options:
+  - `CLOCK_REALTIME` - System-wide real-time clock
+  - `CLOCK_MONOTONIC` - Monotonic clock (not affected by time adjustments)
+  - `CLOCK_PROCESS_CPUTIME_ID` - Per-process CPU time
+  - `CLOCK_THREAD_CPUTIME_ID` - Per-thread CPU time
+  - `CLOCK_MONOTONIC_RAW` - Raw monotonic clock
+  - `CLOCK_REALTIME_COARSE` - Faster but less precise real-time clock
+  - `CLOCK_MONOTONIC_COARSE` - Faster but less precise monotonic clock
+  - `CLOCK_BOOTTIME` - Time since boot (includes suspended time)
+  - `CLOCK_REALTIME_ALARM` - Real-time clock for alarms
+  - `CLOCK_BOOTTIME_ALARM` - Boot time clock for alarms
+  
+  If not specified, defaults to `["CLOCK_REALTIME"]`
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+<ParamField path="containerNames" type="string[]">
+  List of container names to inject time chaos into. If not set, the first container will be injected.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### Shift Time Backward
+
+Shift time backward by 10 minutes:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-shift-example
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  timeOffset: "-10m100ns"
+  duration: "30s"
+```
+
+### Shift Time Forward
+
+Shift time forward by 1 hour:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: time-forward
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  timeOffset: "1h"
+  duration: "60s"
+```
+
+### Target Multiple Clocks
+
+Affect both real-time and monotonic clocks:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: multi-clock-shift
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  timeOffset: "5m"
+  clockIds:
+    - CLOCK_REALTIME
+    - CLOCK_MONOTONIC
+  duration: "120s"
+```
+
+### Precise Time Offset
+
+Use nanosecond precision:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: TimeChaos
+metadata:
+  name: precise-offset
+spec:
+  mode: one
+  selector:
+    labelSelectors:
+      app: myapp
+  timeOffset: "500ms100us50ns"
+  duration: "30s"
+```
+
+## Use Cases
+
+### Testing Time-Based Logic
+
+Shift time to test:
+- Expiration logic (tokens, sessions, certificates)
+- Scheduled tasks and cron jobs
+- Time-based access control
+- Lease and lock timeouts
+
+### Distributed System Clock Skew
+
+Simulate clock drift between nodes to test:
+- Distributed consensus algorithms (Raft, Paxos)
+- Clock synchronization dependencies
+- Causality tracking in distributed systems
+- Event ordering and timestamping
+
+### Database Time Dependencies
+
+Test database behaviors with time changes:
+- Time-based partitioning
+- MVCC (Multi-Version Concurrency Control)
+- Timestamp-based conflict resolution
+- TTL (Time To Live) mechanisms
+
+### Certificate and Token Expiration
+
+Simulate future time to test:
+- TLS certificate expiration handling
+- OAuth token expiration and refresh
+- API key rotation
+- License expiration
+
+## Best Practices
+
+1. **Start Small**: Begin with small time offsets (seconds to minutes) to understand impact
+2. **Understand Clock Types**:
+   - Use `CLOCK_REALTIME` for wall-clock time (most common)
+   - `CLOCK_MONOTONIC` for elapsed time measurements
+   - Be cautious with system-critical clocks
+3. **Test Both Directions**: Test both forward and backward time shifts to catch different edge cases
+4. **Duration Management**: Use appropriate durations - too short may not trigger issues, too long can cause cascading failures
+5. **Gradual Rollout**: Start with `mode: one` to test impact on a single pod
+6. **Monitor Side Effects**: Watch for:
+   - Authentication failures
+   - Certificate validation errors
+   - Timeout issues
+   - Database replication lag
+   - Log timestamp anomalies
+7. **Container Selection**: Specify `containerNames` when working with multi-container pods to control which containers experience time shift
+8. **Combine with Other Chaos**: Test time chaos in combination with network delays or partitions for realistic distributed system scenarios
+
+## Clock ID Reference
+
+<ResponseField name="CLOCK_REALTIME">
+  System-wide real-time clock. This is the most commonly used clock for wall-clock time. It can be adjusted by administrators or NTP.
+</ResponseField>
+
+<ResponseField name="CLOCK_MONOTONIC">
+  Monotonic clock that measures time from an unspecified starting point. It's not affected by manual time adjustments but is affected by NTP adjustments.
+</ResponseField>
+
+<ResponseField name="CLOCK_PROCESS_CPUTIME_ID">
+  High-resolution per-process timer measuring CPU time consumed by the process.
+</ResponseField>
+
+<ResponseField name="CLOCK_THREAD_CPUTIME_ID">
+  Thread-specific CPU-time clock.
+</ResponseField>
+
+<ResponseField name="CLOCK_MONOTONIC_RAW">
+  Similar to CLOCK_MONOTONIC but not affected by NTP adjustments.
+</ResponseField>
+
+<ResponseField name="CLOCK_BOOTTIME">
+  Identical to CLOCK_MONOTONIC but includes time spent in suspend.
+</ResponseField>
+
+## Notes
+
+- TimeChaos is implemented using system call interception
+- Time changes are isolated to the target container(s) and don't affect the host or other containers
+- The chaos daemon intercepts time-related system calls (clock_gettime, gettimeofday, time)
+- Applications that cache time values may not immediately reflect the time shift
+- Time offset is relative to the actual system time
+- Multiple TimeChaos experiments on the same pod will compound their effects
+- Some applications may validate time consistency and fail if they detect anomalies
+- Time shifts can affect log timestamps, making troubleshooting more complex

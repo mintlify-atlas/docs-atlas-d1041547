@@ -1,0 +1,250 @@
+---
+title: IOChaos API Reference
+description: Complete API reference for IOChaos custom resource definition
+---
+
+## IOChaos
+
+IOChaos is the Schema for injecting I/O faults into containers. It allows you to simulate latency, faults, attribution overrides, and mistakes in I/O operations.
+
+### Metadata
+
+<ParamField path="apiVersion" type="string" required>
+  `chaos-mesh.org/v1alpha1`
+</ParamField>
+
+<ParamField path="kind" type="string" required>
+  `IOChaos`
+</ParamField>
+
+<ParamField path="metadata" type="ObjectMeta">
+  Standard Kubernetes metadata. Refer to the Kubernetes API documentation for fields like `name`, `namespace`, `labels`, and `annotations`.
+</ParamField>
+
+### Spec
+
+<ParamField path="spec" type="IOChaosSpec" required>
+  Defines the desired state of IOChaos.
+</ParamField>
+
+## IOChaosSpec
+
+<ParamField path="action" type="IOChaosType" required>
+  Action defines the specific I/O chaos action.
+  
+  **Supported values:**
+  - `latency` - Inject latency into I/O operations
+  - `fault` - Inject faults (errno) into I/O operations
+  - `attrOverride` - Override file attributes
+  - `mistake` - Inject incorrect data into read/write operations
+</ParamField>
+
+<ParamField path="delay" type="string">
+  Delay defines the value of I/O chaos action delay. A delay string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as `"300ms"`.
+  
+  Valid time units are `"ns"`, `"us"` (or `"µs"`), `"ms"`, `"s"`, `"m"`, `"h"`.
+  
+  **Required when:** `action == 'latency'`
+</ParamField>
+
+<ParamField path="errno" type="uint32">
+  Errno defines the error code that returned by I/O action.
+  
+  Refer to: https://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html
+  
+  **Required when:** `action == 'fault'`
+</ParamField>
+
+<ParamField path="attr" type="AttrOverrideSpec">
+  Attr defines the overridden attribution.
+  
+  **Required when:** `action == 'attrOverride'`
+</ParamField>
+
+<ParamField path="mistake" type="MistakeSpec">
+  Mistake defines what types of incorrectness are injected to I/O operations.
+  
+  **Required when:** `action == 'mistake'`
+</ParamField>
+
+<ParamField path="path" type="string">
+  Path defines the path of files for injecting I/O chaos action.
+</ParamField>
+
+<ParamField path="methods" type="[]IoMethod">
+  Methods defines the I/O methods for injecting I/O chaos action.
+  
+  **Default:** all I/O methods
+  
+  See [IoMethod](#iomethod) for available values.
+</ParamField>
+
+<ParamField path="percent" type="int" default="100">
+  Percent defines the percentage of injection errors and provides a number from 0-100.
+</ParamField>
+
+<ParamField path="volumePath" type="string" required>
+  VolumePath represents the mount path of injected volume.
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration represents the duration of the chaos action. A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as `"300ms"`, `"-1.5h"` or `"2h45m"`.
+  
+  Valid time units are `"ns"`, `"us"` (or `"µs"`), `"ms"`, `"s"`, `"m"`, `"h"`.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  RemoteCluster represents the remote cluster where the chaos will be deployed.
+</ParamField>
+
+### Container Selector Fields
+
+IOChaosSpec embeds `ContainerSelector` which includes:
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Selector is used to select pods that are used to inject chaos action.
+</ParamField>
+
+<ParamField path="mode" type="SelectorMode" required>
+  Mode defines the mode to run chaos action.
+  
+  **Supported values:**
+  - `one` - Select one random pod
+  - `all` - Select all pods
+  - `fixed` - Select a fixed number of pods
+  - `fixed-percent` - Select a fixed percentage of pods
+  - `random-max-percent` - Select a random percentage up to max
+</ParamField>
+
+<ParamField path="value" type="string">
+  Value is required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+</ParamField>
+
+<ParamField path="containerNames" type="[]string">
+  ContainerNames indicates list of the name of affected container. If not set, the first container will be injected.
+</ParamField>
+
+## AttrOverrideSpec
+
+AttrOverrideSpec defines file attribute overrides.
+
+<ParamField path="ino" type="*uint64">
+  Inode number override.
+</ParamField>
+
+<ParamField path="size" type="*uint64">
+  File size override.
+</ParamField>
+
+<ParamField path="blocks" type="*uint64">
+  Number of blocks override.
+</ParamField>
+
+<ParamField path="atime" type="*Timespec">
+  Access time override.
+</ParamField>
+
+<ParamField path="mtime" type="*Timespec">
+  Modification time override.
+</ParamField>
+
+<ParamField path="ctime" type="*Timespec">
+  Change time override.
+</ParamField>
+
+<ParamField path="kind" type="*FileType">
+  File type override. Valid values: `namedPipe`, `charDevice`, `blockDevice`, `directory`, `regularFile`, `symlink`, `socket`.
+</ParamField>
+
+<ParamField path="perm" type="*uint16">
+  File permissions override.
+</ParamField>
+
+<ParamField path="nlink" type="*uint32">
+  Number of hard links override.
+</ParamField>
+
+<ParamField path="uid" type="*uint32">
+  User ID override.
+</ParamField>
+
+<ParamField path="gid" type="*uint32">
+  Group ID override.
+</ParamField>
+
+<ParamField path="rdev" type="*uint32">
+  Device ID override.
+</ParamField>
+
+## MistakeSpec
+
+MistakeSpec defines incorrect data injection for I/O operations.
+
+<ParamField path="filling" type="FillingType">
+  Filling determines what is filled in the mistake data.
+  
+  **Valid values:**
+  - `zero` - Fill with zeros
+  - `random` - Fill with random data
+</ParamField>
+
+<ParamField path="maxOccurrences" type="int64">
+  There will be [1, MaxOccurrences] segments of wrong data.
+  
+  **Minimum:** 1
+</ParamField>
+
+<ParamField path="maxLength" type="int64">
+  Max length of each wrong data segment in bytes.
+  
+  **Minimum:** 1
+</ParamField>
+
+## IoMethod
+
+IoMethod represents FUSE I/O operation methods that can be targeted:
+
+- `lookup`, `forget`, `getattr`, `setattr`, `readlink`
+- `mknod`, `mkdir`, `unlink`, `rmdir`, `symlink`
+- `rename`, `link`, `open`, `read`, `write`
+- `flush`, `release`, `fsync`, `opendir`, `readdir`
+- `releasedir`, `fsyncdir`, `statfs`
+- `setxattr`, `getxattr`, `listxattr`, `removexattr`
+- `access`, `create`, `getlk`, `setlk`, `bmap`
+
+## IOChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Conditions represents the current global condition of the chaos.
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Experiment records the last experiment state.
+</ResponseField>
+
+<ResponseField name="instances" type="map[string]int64">
+  Instances always specifies podiochaos generation or empty.
+</ResponseField>
+
+## Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-delay-example
+  namespace: chaos-mesh
+spec:
+  action: latency
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: myapp
+  volumePath: /var/data
+  path: /var/data/*
+  delay: '100ms'
+  percent: 50
+  duration: '30s'
+```

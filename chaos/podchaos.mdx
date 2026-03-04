@@ -1,0 +1,188 @@
+---
+title: PodChaos
+description: Simulate pod lifecycle failures in Kubernetes
+---
+
+PodChaos allows you to simulate pod and container failures to test your application's resilience to pod lifecycle disruptions.
+
+## Supported Actions
+
+PodChaos supports three types of actions:
+
+- **pod-kill**: Kill selected pods
+- **pod-failure**: Make pods unavailable for a specified duration
+- **container-kill**: Kill specific containers within pods
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-example
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+```
+
+## Spec Fields
+
+<ParamField path="action" type="string" required>
+  The chaos action to perform. Must be one of:
+  - `pod-kill`: Kill the entire pod
+  - `pod-failure`: Make the pod unavailable (requires `duration`)
+  - `container-kill`: Kill specific containers in the pod
+</ParamField>
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment.
+
+  <Expandable title="PodSelectorSpec fields">
+    <ParamField path="namespaces" type="string[]">
+      Kubernetes namespaces to select pods from
+    </ParamField>
+
+    <ParamField path="labelSelectors" type="map[string]string">
+      Label selectors to filter pods
+    </ParamField>
+
+    <ParamField path="annotationSelectors" type="map[string]string">
+      Annotation selectors to filter pods
+    </ParamField>
+
+    <ParamField path="nodes" type="string[]">
+      Node names where target pods must be running
+    </ParamField>
+
+    <ParamField path="pods" type="map[string][]string">
+      Map of namespace to pod names for explicit pod selection
+    </ParamField>
+
+    <ParamField path="nodeSelectors" type="map[string]string">
+      Node label selectors
+    </ParamField>
+
+    <ParamField path="podPhaseSelectors" type="string[]">
+      Pod phases to filter by (Pending, Running, Succeeded, Failed, Unknown)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Specifies how many pods to select. Options:
+  - `one`: Select one random pod
+  - `all`: Select all matching pods
+  - `fixed`: Select a fixed number of pods (requires `value`)
+  - `fixed-percent`: Select a percentage of pods (requires `value`)
+  - `random-max-percent`: Select a random percentage up to max (requires `value`)
+</ParamField>
+
+<ParamField path="value" type="string">
+  Required when mode is `fixed`, `fixed-percent`, or `random-max-percent`. Specifies the number or percentage of pods to select.
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Required for `pod-failure` action. Format: "300ms", "1.5h", "2h45m". Valid units: ns, us, ms, s, m, h.
+</ParamField>
+
+<ParamField path="gracePeriod" type="integer" default="0">
+  Grace period in seconds before deleting the pod (for `pod-kill` action). Must be non-negative.
+</ParamField>
+
+<ParamField path="containerNames" type="string[]">
+  List of container names to kill. Required for `container-kill` action. If not set for container-kill, the first container will be selected.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Name of the remote cluster where chaos will be deployed (for multi-cluster scenarios)
+</ParamField>
+
+## Examples
+
+### Pod Kill
+
+Kill one random pod matching the label selector:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-kill-example
+spec:
+  action: pod-kill
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+```
+
+### Pod Failure
+
+Make one pod unavailable for 30 seconds:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: pod-failure-example
+spec:
+  action: pod-failure
+  mode: one
+  duration: "30s"
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+```
+
+### Container Kill
+
+Kill a specific container within a pod:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: container-kill-example
+spec:
+  action: container-kill
+  mode: one
+  selector:
+    labelSelectors:
+      app.kubernetes.io/component: monitor
+  containerNames:
+    - prometheus
+```
+
+## Use Cases
+
+### Testing Pod Recovery
+
+Use `pod-kill` to verify that your application properly handles pod restarts and that Kubernetes recreates pods as expected.
+
+### Simulating Node Failures
+
+Use `pod-failure` with longer durations to simulate scenarios where pods become unavailable, testing failover mechanisms and load balancing.
+
+### Container Crash Testing
+
+Use `container-kill` to test multi-container pod configurations and verify that sidecar containers or init containers are properly managed.
+
+## Best Practices
+
+1. **Start Small**: Begin with `mode: one` to test the impact on a single pod before scaling up
+2. **Use Duration Wisely**: For `pod-failure`, set durations that match realistic outage scenarios
+3. **Label Selectors**: Use specific label selectors to avoid affecting unintended pods
+4. **Grace Period**: Set appropriate `gracePeriod` values for `pod-kill` to test graceful shutdown handling
+5. **Monitor Impact**: Always monitor your application metrics during chaos experiments to understand the impact
+
+## Notes
+
+- `pod-kill` and `container-kill` are one-shot actions (they execute once and complete)
+- `pod-failure` is a continuous action that lasts for the specified duration
+- When using `container-kill`, ensure the container name exists in the target pods
+- The `selector` field uses the same selection mechanism as Kubernetes label selectors

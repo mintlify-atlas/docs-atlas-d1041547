@@ -1,0 +1,197 @@
+---
+title: AWSChaos
+description: Inject failures into AWS EC2 instances and EBS volumes
+---
+
+AWSChaos allows you to simulate AWS infrastructure failures by manipulating EC2 instances and EBS volumes through the AWS API.
+
+## Actions
+
+AWSChaos supports the following actions:
+
+- **ec2-stop**: Stop an EC2 instance
+- **ec2-restart**: Restart an EC2 instance
+- **detach-volume**: Detach an EBS volume from an EC2 instance
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The AWS chaos action to perform.
+  
+  **Options:** `ec2-stop`, `ec2-restart`, `detach-volume`
+  
+  **Default:** `ec2-stop`
+</ParamField>
+
+<ParamField path="spec.awsRegion" type="string" required>
+  AWS region where the resources are located (e.g., `us-west-2`, `eu-central-1`).
+</ParamField>
+
+<ParamField path="spec.ec2Instance" type="string" required>
+  EC2 instance ID to target (e.g., `i-0123456789abcdef0`).
+</ParamField>
+
+<ParamField path="spec.volumeID" type="string">
+  EBS volume ID to detach. Required when action is `detach-volume`.
+  
+  **Example:** `vol-0123456789abcdef0`
+</ParamField>
+
+<ParamField path="spec.deviceName" type="string">
+  Device name of the volume attachment. Required when action is `detach-volume`.
+  
+  **Example:** `/dev/sdf`
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action. For `ec2-stop`, the instance remains stopped for this duration. Not applicable to `ec2-restart` (oneshot action).
+</ParamField>
+
+<ParamField path="spec.secretName" type="string">
+  Name of the Kubernetes secret containing AWS credentials. If not specified, uses the default AWS credential chain (IAM roles, environment variables, etc.).
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## AWS Credentials Setup
+
+You need to provide AWS credentials to Chaos Mesh. There are two approaches:
+
+### Option 1: Kubernetes Secret (Recommended)
+
+Create a Kubernetes secret with AWS credentials:
+
+```bash
+kubectl create secret generic aws-credentials \
+  --from-literal=aws_access_key_id=YOUR_ACCESS_KEY \
+  --from-literal=aws_secret_access_key=YOUR_SECRET_KEY \
+  -n chaos-mesh
+```
+
+Then reference it in your AWSChaos:
+
+```yaml
+spec:
+  secretName: aws-credentials
+```
+
+### Option 2: IAM Roles for Service Accounts (IRSA)
+
+If running on EKS, you can use IAM Roles for Service Accounts:
+
+1. Create an IAM role with the necessary EC2 permissions
+2. Associate the role with the Chaos Controller Manager service account
+3. Don't specify `secretName` in the AWSChaos spec
+
+### Required IAM Permissions
+
+The AWS credentials need the following permissions:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:StopInstances",
+        "ec2:StartInstances",
+        "ec2:RebootInstances",
+        "ec2:DetachVolume",
+        "ec2:AttachVolume",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVolumes"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+## Examples
+
+### Stop EC2 Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+metadata:
+  name: ec2-stop-example
+  namespace: chaos-mesh
+spec:
+  action: ec2-stop
+  awsRegion: us-west-2
+  ec2Instance: i-0123456789abcdef0
+  secretName: aws-credentials
+  duration: "5m"
+```
+
+This example stops the specified EC2 instance for 5 minutes, then automatically starts it again.
+
+### Restart EC2 Instance
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+metadata:
+  name: ec2-restart-example
+  namespace: chaos-mesh
+spec:
+  action: ec2-restart
+  awsRegion: us-east-1
+  ec2Instance: i-0abcdef1234567890
+  secretName: aws-credentials
+```
+
+This example performs a one-time restart of the EC2 instance. Note that `ec2-restart` is a oneshot action and doesn't use duration.
+
+### Detach EBS Volume
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: AWSChaos
+metadata:
+  name: volume-detach-example
+  namespace: chaos-mesh
+spec:
+  action: detach-volume
+  awsRegion: eu-central-1
+  ec2Instance: i-0123456789abcdef0
+  volumeID: vol-0abcdef1234567890
+  deviceName: /dev/sdf
+  secretName: aws-credentials
+  duration: "3m"
+```
+
+This example detaches the specified EBS volume from the EC2 instance for 3 minutes, then automatically reattaches it.
+
+## Implementation Details
+
+AWSChaos uses the AWS SDK to:
+1. Authenticate using provided credentials or IAM roles
+2. Call AWS APIs to manipulate resources:
+   - `ec2-stop`: Calls `StopInstances` API, then `StartInstances` after duration
+   - `ec2-restart`: Calls `RebootInstances` API (oneshot)
+   - `detach-volume`: Calls `DetachVolume` API, then `AttachVolume` after duration
+
+Source: `api/v1alpha1/awschaos_types.go:43-109`
+
+## Oneshot Behavior
+
+The `ec2-restart` action is marked as a oneshot action, meaning:
+- It executes once immediately
+- No recovery action is performed
+- The `duration` field is ignored
+- The experiment completes after the restart command is sent
+
+Source: `api/v1alpha1/awschaos_types.go:28`
+
+## Important Notes
+
+- Ensure your AWS credentials have appropriate permissions
+- Be cautious when targeting production instances
+- The EC2 instance must be in a state that allows the requested operation
+- For `detach-volume`, ensure the volume is not the root volume unless the instance is stopped
+- Test in non-production environments first

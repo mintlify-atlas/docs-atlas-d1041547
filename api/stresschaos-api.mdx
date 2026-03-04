@@ -1,0 +1,237 @@
+---
+title: StressChaos API Reference
+description: Complete API reference for StressChaos custom resource definition
+---
+
+## StressChaos
+
+StressChaos is the Schema for generating CPU and memory stress over a collection of pods.
+
+### Metadata
+
+<ParamField path="apiVersion" type="string" required>
+  `chaos-mesh.org/v1alpha1`
+</ParamField>
+
+<ParamField path="kind" type="string" required>
+  `StressChaos`
+</ParamField>
+
+<ParamField path="metadata" type="ObjectMeta">
+  Standard Kubernetes metadata. Refer to the Kubernetes API documentation for fields like `name`, `namespace`, `labels`, and `annotations`.
+</ParamField>
+
+### Spec
+
+<ParamField path="spec" type="StressChaosSpec" required>
+  Defines the behavior of a stress chaos experiment.
+</ParamField>
+
+## StressChaosSpec
+
+<ParamField path="stressors" type="*Stressors">
+  Stressors defines plenty of stressors supported to stress system components out. You can use one or more of them to make up various kinds of stresses. At least one of the stressors should be specified.
+</ParamField>
+
+<ParamField path="stressngStressors" type="string">
+  StressngStressors defines stressors in `stress-ng` dialect (see `man stress-ng`). This is an experimental feature and more powerful than `Stressors`.
+  
+  **Note:** Not all stressors are well tested. This may be retired in later releases. You should always use `Stressors` to define the stressors and use this only when you want stressors unsupported by `Stressors`.
+  
+  When both `StressngStressors` and `Stressors` are defined, `StressngStressors` wins.
+</ParamField>
+
+<ParamField path="duration" type="*string">
+  Duration represents the duration of the chaos action. A duration string is a possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as `"300ms"`, `"-1.5h"` or `"2h45m"`.
+  
+  Valid time units are `"ns"`, `"us"` (or `"µs"`), `"ms"`, `"s"`, `"m"`, `"h"`.
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  RemoteCluster represents the remote cluster where the chaos will be deployed.
+</ParamField>
+
+### Container Selector Fields
+
+StressChaosSpec embeds `ContainerSelector` which includes:
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Selector is used to select pods that are used to inject chaos action.
+</ParamField>
+
+<ParamField path="mode" type="SelectorMode" required>
+  Mode defines the mode to run chaos action.
+  
+  **Supported values:**
+  - `one` - Select one random pod
+  - `all` - Select all pods
+  - `fixed` - Select a fixed number of pods
+  - `fixed-percent` - Select a fixed percentage of pods
+  - `random-max-percent` - Select a random percentage up to max
+</ParamField>
+
+<ParamField path="value" type="string">
+  Value is required when mode is `fixed`, `fixed-percent`, or `random-max-percent`.
+</ParamField>
+
+<ParamField path="containerNames" type="[]string">
+  ContainerNames indicates list of the name of affected container. If not set, the first container will be injected.
+</ParamField>
+
+## Stressors
+
+Stressors defines the stressors to apply.
+
+<ParamField path="memory" type="*MemoryStressor">
+  MemoryStressor stresses virtual memory out.
+</ParamField>
+
+<ParamField path="cpu" type="*CPUStressor">
+  CPUStressor stresses CPU out.
+</ParamField>
+
+## MemoryStressor
+
+<ParamField path="workers" type="int" required>
+  Workers specifies N workers to apply the stressor.
+  
+  **Maximum:** 8192 (stress-ng limitation)
+</ParamField>
+
+<ParamField path="size" type="string">
+  Size specifies N bytes consumed per vm worker, default is the total available memory.
+  
+  One can specify the size as % of total available memory or in units of B, KB/KiB, MB/MiB, GB/GiB, TB/TiB.
+  
+  **Examples:** `"256MB"`, `"1GB"`, `"50%"`
+</ParamField>
+
+<ParamField path="oomScoreAdj" type="int" default="0">
+  OOMScoreAdj sets the oom_score_adj of the stress process. See `man 5 proc` to know more about this option.
+  
+  **Range:** -1000 to 1000
+</ParamField>
+
+<ParamField path="options" type="[]string">
+  Options to extend stress-ng with additional flags.
+</ParamField>
+
+## CPUStressor
+
+<ParamField path="workers" type="int" required>
+  Workers specifies N workers to apply the stressor.
+  
+  **Maximum:** 8192 (stress-ng limitation)
+</ParamField>
+
+<ParamField path="load" type="*int">
+  Load specifies P percent loading per CPU worker. 0 is effectively a sleep (no load) and 100 is full loading.
+  
+  **Range:** 0 to 100
+</ParamField>
+
+<ParamField path="options" type="[]string">
+  Options to extend stress-ng with additional flags.
+</ParamField>
+
+## StressChaosStatus
+
+<ResponseField name="conditions" type="[]ChaosCondition">
+  Conditions represents the current global condition of the chaos.
+</ResponseField>
+
+<ResponseField name="experiment" type="ExperimentStatus">
+  Experiment records the last experiment state.
+</ResponseField>
+
+<ResponseField name="instances" type="map[string]StressInstance">
+  Instances always specifies stressing instances.
+</ResponseField>
+
+## StressInstance
+
+<ResponseField name="uid" type="string">
+  UID is the stress-ng identifier.
+</ResponseField>
+
+<ResponseField name="memoryUid" type="string">
+  MemoryUID is the memStress identifier.
+</ResponseField>
+
+<ResponseField name="startTime" type="*metav1.Time">
+  StartTime specifies when the stress-ng starts.
+</ResponseField>
+
+<ResponseField name="memoryStartTime" type="*metav1.Time">
+  MemoryStartTime specifies when the memStress starts.
+</ResponseField>
+
+## Example
+
+### CPU Stress Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cpu-stress-example
+  namespace: chaos-mesh
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: myapp
+  stressors:
+    cpu:
+      workers: 4
+      load: 80
+  duration: '60s'
+```
+
+### Memory Stress Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: memory-stress-example
+  namespace: chaos-mesh
+spec:
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: myapp
+  stressors:
+    memory:
+      workers: 2
+      size: '256MB'
+  duration: '60s'
+```
+
+### Combined Stress Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: combined-stress-example
+  namespace: chaos-mesh
+spec:
+  mode: fixed
+  value: '2'
+  selector:
+    namespaces:
+      - default
+  stressors:
+    cpu:
+      workers: 2
+      load: 50
+    memory:
+      workers: 1
+      size: '512MB'
+  duration: '120s'
+```

@@ -1,0 +1,407 @@
+---
+title: NetworkChaos
+description: Simulate network failures and impairments
+---
+
+NetworkChaos allows you to inject various network faults into pods to test how your application handles network disruptions, latency, packet loss, and bandwidth limitations.
+
+## Supported Actions
+
+NetworkChaos supports seven types of network impairments:
+
+- **delay**: Add latency to network packets
+- **loss**: Drop network packets
+- **duplicate**: Duplicate network packets
+- **corrupt**: Corrupt network packets
+- **partition**: Create network partitions between pods
+- **bandwidth**: Limit network bandwidth
+- **netem**: Combine multiple network impairments (delay, loss, duplicate, corrupt)
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-example
+spec:
+  action: delay
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  delay:
+    latency: "90ms"
+    correlation: "25"
+    jitter: "90ms"
+  duration: "10s"
+```
+
+## Spec Fields
+
+<ParamField path="action" type="string" required>
+  The network chaos action to perform. Must be one of:
+  - `delay`: Add network latency
+  - `loss`: Drop packets
+  - `duplicate`: Duplicate packets
+  - `corrupt`: Corrupt packets
+  - `partition`: Create network partition
+  - `bandwidth`: Limit bandwidth
+  - `netem`: Combine multiple impairments
+</ParamField>
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the source pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+<ParamField path="direction" type="string" default="to">
+  Direction of network traffic to affect:
+  - `to`: Traffic from source to target
+  - `from`: Traffic from target to source
+  - `both`: Bidirectional traffic
+</ParamField>
+
+<ParamField path="target" type="PodSelector">
+  Target pods for the network chaos (used with partition and directional actions). If not specified, affects all traffic.
+
+  <Expandable title="PodSelector fields">
+    <ParamField path="selector" type="PodSelectorSpec">
+      Pod selection criteria for the target
+    </ParamField>
+
+    <ParamField path="mode" type="string">
+      Selection mode for target pods
+    </ParamField>
+
+    <ParamField path="value" type="string">
+      Value for fixed/percent modes
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="externalTargets" type="string[]">
+  External IP addresses or hostnames to target (for affecting traffic outside the cluster)
+</ParamField>
+
+<ParamField path="device" type="string">
+  Network device to be affected (e.g., "eth0"). If not specified, uses the default network interface.
+</ParamField>
+
+<ParamField path="targetDevice" type="string">
+  Network device to be affected in target scope
+</ParamField>
+
+### Action-Specific Fields
+
+<ParamField path="delay" type="DelaySpec">
+  Delay configuration (required when action is `delay` or `netem`)
+
+  <Expandable title="DelaySpec fields">
+    <ParamField path="latency" type="string" required>
+      Network latency to add (e.g., "90ms", "1s")
+    </ParamField>
+
+    <ParamField path="jitter" type="string" default="0ms">
+      Variation in latency (e.g., "90ms")
+    </ParamField>
+
+    <ParamField path="correlation" type="string" default="0">
+      Correlation between successive delays (0-100)
+    </ParamField>
+
+    <ParamField path="reorder" type="ReorderSpec">
+      Packet reordering configuration
+      
+      <Expandable title="ReorderSpec fields">
+        <ParamField path="reorder" type="string" required>
+          Percentage of packets to reorder (e.g., "25")
+        </ParamField>
+
+        <ParamField path="correlation" type="string" default="0">
+          Correlation coefficient (0-100)
+        </ParamField>
+
+        <ParamField path="gap" type="integer" required>
+          Number of packets to delay
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="loss" type="LossSpec">
+  Packet loss configuration (required when action is `loss` or `netem`)
+
+  <Expandable title="LossSpec fields">
+    <ParamField path="loss" type="string" required>
+      Percentage of packets to drop (e.g., "25" for 25%)
+    </ParamField>
+
+    <ParamField path="correlation" type="string" default="0">
+      Correlation between successive losses (0-100)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="duplicate" type="DuplicateSpec">
+  Packet duplication configuration (required when action is `duplicate` or `netem`)
+
+  <Expandable title="DuplicateSpec fields">
+    <ParamField path="duplicate" type="string" required>
+      Percentage of packets to duplicate (e.g., "40")
+    </ParamField>
+
+    <ParamField path="correlation" type="string" default="0">
+      Correlation coefficient (0-100)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="corrupt" type="CorruptSpec">
+  Packet corruption configuration (required when action is `corrupt` or `netem`)
+
+  <Expandable title="CorruptSpec fields">
+    <ParamField path="corrupt" type="string" required>
+      Percentage of packets to corrupt (e.g., "40")
+    </ParamField>
+
+    <ParamField path="correlation" type="string" default="0">
+      Correlation coefficient (0-100)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="bandwidth" type="BandwidthSpec">
+  Bandwidth limitation configuration (required when action is `bandwidth`)
+
+  <Expandable title="BandwidthSpec fields">
+    <ParamField path="rate" type="string" required>
+      Bandwidth rate limit. Supports units: bit, kbit, mbit, gbit, tbit, bps, kbps, mbps, gbps, tbps (e.g., "100kbps")
+    </ParamField>
+
+    <ParamField path="limit" type="uint32" required>
+      Number of bytes that can be queued waiting for tokens (minimum: 1)
+    </ParamField>
+
+    <ParamField path="buffer" type="uint32" required>
+      Maximum number of bytes that tokens can be available for instantaneously (minimum: 1)
+    </ParamField>
+
+    <ParamField path="peakrate" type="uint64">
+      Maximum depletion rate of the bucket (minimum: 0)
+    </ParamField>
+
+    <ParamField path="minburst" type="uint32">
+      Size of the peakrate bucket (minimum: 0)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### Network Delay
+
+Add 90ms latency with jitter:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-example
+spec:
+  action: delay
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  delay:
+    latency: "90ms"
+    correlation: "25"
+    jitter: "90ms"
+  duration: "10s"
+```
+
+### Packet Loss
+
+Drop 25% of packets:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-loss-example
+spec:
+  action: loss
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  loss:
+    loss: "25"
+    correlation: "25"
+  duration: "10s"
+```
+
+### Packet Corruption
+
+Corrupt 40% of packets:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-corrupt-example
+spec:
+  action: corrupt
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  corrupt:
+    corrupt: "40"
+    correlation: "25"
+  duration: "10s"
+```
+
+### Packet Duplication
+
+Duplicate 40% of packets:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-duplicate-example
+spec:
+  action: duplicate
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  duplicate:
+    duplicate: "40"
+    correlation: "25"
+  duration: "10s"
+```
+
+### Network Partition
+
+Create a network partition between two sets of pods:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-partition-example
+spec:
+  action: partition
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  direction: to
+  target:
+    selector:
+      labelSelectors:
+        "app.kubernetes.io/component": "tikv"
+    mode: one
+  duration: "10s"
+```
+
+### Bandwidth Limitation
+
+Limit bandwidth to 100kbps:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-bandwidth-example
+spec:
+  action: bandwidth
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  bandwidth:
+    rate: 100kbps
+    limit: 100
+    buffer: 10000
+    peakrate: 1000000
+    minburst: 1000000
+  duration: "10s"
+```
+
+### Combined Network Impairments (Netem)
+
+Apply multiple network impairments simultaneously:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-netem-example
+spec:
+  action: netem
+  mode: one
+  selector:
+    labelSelectors:
+      "app.kubernetes.io/component": "tikv"
+  delay:
+    latency: "90ms"
+    correlation: "25"
+    jitter: "90ms"
+  loss:
+    loss: "25"
+    correlation: "25"
+  duration: "10s"
+```
+
+## Use Cases
+
+### Testing High-Latency Networks
+
+Use the `delay` action to simulate network conditions in geographically distributed systems or slow network connections.
+
+### Simulating Unreliable Networks
+
+Combine `loss`, `duplicate`, and `corrupt` actions to test application behavior under poor network conditions.
+
+### Testing Network Partitions
+
+Use the `partition` action to verify that your application handles split-brain scenarios and network segmentation correctly.
+
+### Bandwidth Constraints
+
+Use the `bandwidth` action to test how your application performs under bandwidth-limited conditions.
+
+## Best Practices
+
+1. **Start with Moderate Values**: Begin with lower percentages for loss, corruption, and duplication to understand baseline impact
+2. **Use Correlation**: The correlation parameter makes chaos more realistic by creating patterns in network behavior
+3. **Test Bidirectionally**: Use `direction: both` to test how your application handles symmetric network issues
+4. **External Targets**: Use `externalTargets` to test how your application handles external service degradation
+5. **Monitor Metrics**: Always monitor application metrics, latency, and error rates during experiments
+6. **Gradual Rollout**: Start with `mode: one` before affecting all pods
+
+## Notes
+
+- Network chaos is implemented using Linux tc (traffic control) and requires appropriate kernel capabilities
+- The `netem` action allows combining multiple network impairments in a single experiment
+- Direction applies to partition and can be used with other actions when target is specified
+- External targets must be specified as IP addresses or resolvable hostnames
+- Network device names are platform-specific (common: eth0, ens3, etc.)

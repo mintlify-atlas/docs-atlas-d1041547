@@ -1,0 +1,709 @@
+---
+title: Installation Guide
+description: Complete guide for installing Chaos Mesh in production Kubernetes environments
+---
+
+This guide covers production-ready installation of Chaos Mesh with various configuration options.
+
+## Prerequisites
+
+<Steps>
+  <Step title="Kubernetes Cluster">
+    Kubernetes version 1.12 or later (1.20+ recommended for production)
+  </Step>
+  <Step title="Container Runtime">
+    One of: Docker, containerd, or CRI-O
+  </Step>
+  <Step title="Access Rights">
+    Cluster-admin privileges or appropriate RBAC permissions
+  </Step>
+  <Step title="Helm (Optional)">
+    Helm 3.x for Helm-based installation
+  </Step>
+</Steps>
+
+<Note>
+  For production environments, we recommend using Helm for easier configuration management and upgrades.
+</Note>
+
+## Installation Methods
+
+### Method 1: Helm Installation (Recommended)
+
+Helm provides the most flexible installation with easy configuration management.
+
+#### Basic Installation
+
+```bash
+# Add Chaos Mesh Helm repository
+helm repo add chaos-mesh https://charts.chaos-mesh.org
+helm repo update
+
+# Create namespace
+kubectl create namespace chaos-mesh
+
+# Install Chaos Mesh
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --version latest
+```
+
+#### Container Runtime Configuration
+
+Configure Chaos Mesh based on your container runtime:
+
+<CodeGroup>
+```bash Docker
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=docker \
+  --set chaosDaemon.socketPath=/var/run/docker.sock
+```
+
+```bash containerd
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=containerd \
+  --set chaosDaemon.socketPath=/run/containerd/containerd.sock
+```
+
+```bash CRI-O
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=crio \
+  --set chaosDaemon.socketPath=/var/run/crio/crio.sock
+```
+
+```bash Kind
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=containerd \
+  --set chaosDaemon.socketPath=/run/containerd/containerd.sock
+```
+
+```bash k3s
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=containerd \
+  --set chaosDaemon.socketPath=/run/k3s/containerd/containerd.sock
+```
+
+```bash microk8s
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.runtime=containerd \
+  --set chaosDaemon.socketPath=/var/snap/microk8s/common/run/containerd.sock
+```
+</CodeGroup>
+
+#### Production Configuration
+
+For production deployments, use a values file with custom configurations:
+
+```yaml values-production.yaml
+# Container runtime settings
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  
+  # Resource profile: light, standard, or intensive
+  resourceProfile: standard
+  
+  # Override specific resources if needed
+  resources:
+    limits:
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  
+  # Run with specific capabilities instead of privileged mode
+  privileged: false
+  capabilities:
+    add:
+      - SYS_PTRACE
+      - NET_ADMIN
+      - NET_RAW
+      - MKNOD
+      - SYS_CHROOT
+      - SYS_ADMIN
+      - KILL
+      - IPC_LOCK
+
+# Controller Manager settings
+controllerManager:
+  replicaCount: 3
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Enable leader election for HA
+  leaderElection:
+    enabled: true
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+
+# Dashboard settings
+dashboard:
+  create: true
+  
+  # Enable security mode (recommended)
+  securityMode: true
+  
+  # Use LoadBalancer or Ingress for production
+  service:
+    type: ClusterIP
+  
+  # Enable persistent storage for SQLite
+  persistentVolume:
+    enabled: true
+    size: 8Gi
+    storageClassName: standard
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1024Mi
+    requests:
+      cpu: 50m
+      memory: 256Mi
+
+# DNS Server for DNSChaos
+dnsServer:
+  create: true
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 70Mi
+
+# Timezone configuration
+timezone: "UTC"
+
+# Image registry (use your own registry if needed)
+images:
+  registry: ghcr.io
+  tag: latest
+```
+
+Apply the configuration:
+
+```bash
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --values values-production.yaml
+```
+
+### Method 2: Installation Script
+
+The installation script provides automated setup with various options.
+
+#### Basic Usage
+
+```bash
+curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash
+```
+
+#### Script Options
+
+<ParamField path="--local" type="string">
+  Run local Kubernetes cluster (supports: `kind`)
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --local kind
+  ```
+</ParamField>
+
+<ParamField path="--version" type="string">
+  Specify Chaos Mesh version (default: latest)
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --version v2.6.0
+  ```
+</ParamField>
+
+<ParamField path="--runtime" type="string">
+  Container runtime: `docker` or `containerd` (default: docker)
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --runtime containerd
+  ```
+</ParamField>
+
+<ParamField path="--namespace" type="string">
+  Installation namespace (default: chaos-mesh)
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --namespace my-chaos
+  ```
+</ParamField>
+
+<ParamField path="--k3s" type="boolean">
+  Install in k3s environment
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --k3s
+  ```
+</ParamField>
+
+<ParamField path="--microk8s" type="boolean">
+  Install in microk8s environment
+  
+  ```bash
+  curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- --microk8s
+  ```
+</ParamField>
+
+#### Complete Example
+
+```bash
+# Install Chaos Mesh v2.6.0 with containerd in custom namespace
+curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- \
+  --version v2.6.0 \
+  --runtime containerd \
+  --namespace chaos-testing \
+  --release-name my-chaos-mesh
+```
+
+### Method 3: Manual Installation with Manifests
+
+For environments without Helm:
+
+```bash
+# Step 1: Install CRDs
+kubectl create namespace chaos-mesh
+kubectl apply -f https://mirrors.chaos-mesh.org/latest/crd.yaml
+
+# Step 2: Install Chaos Mesh components
+kubectl apply -f https://mirrors.chaos-mesh.org/latest/chaos-mesh.yaml
+```
+
+<Warning>
+  Manual installation doesn't provide easy configuration options. For production, use Helm or the install script.
+</Warning>
+
+## Configuration Options
+
+### Resource Profiles for Chaos Daemon
+
+Chaos Mesh supports three resource profiles to optimize for different environments:
+
+<CardGroup cols={3}>
+  <Card title="Light (Default)" icon="feather">
+    **Resources**: 100m CPU, 256Mi memory
+    
+    **Use case**: Staging, test environments, cost optimization
+  </Card>
+  <Card title="Standard" icon="gauge">
+    **Resources**: 250m CPU, 512Mi memory
+    
+    **Use case**: Balanced production workloads
+  </Card>
+  <Card title="Intensive" icon="gauge-high">
+    **Resources**: 500m CPU, 1Gi memory (with limits)
+    
+    **Use case**: Heavy chaos testing, large-scale production
+  </Card>
+</CardGroup>
+
+```bash
+# Use standard profile
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.resourceProfile=standard
+
+# Override specific resources from profile
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set chaosDaemon.resourceProfile=light \
+  --set chaosDaemon.resources.requests.cpu=200m
+```
+
+### Namespace Scoped Mode
+
+Restrict Chaos Mesh to specific namespaces instead of cluster-wide:
+
+```yaml
+clusterScoped: false
+controllerManager:
+  targetNamespace: chaos-testing
+```
+
+```bash
+helm install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --set clusterScoped=false \
+  --set controllerManager.targetNamespace=chaos-testing
+```
+
+<Tip>
+  Namespace-scoped mode is more secure for multi-tenant clusters.
+</Tip>
+
+### Security Configuration
+
+#### Enable Dashboard Security Mode
+
+Requires users to provide credentials instead of using service account:
+
+```yaml
+dashboard:
+  securityMode: true
+```
+
+Generate a token for access:
+
+```bash
+# Create a service account
+kubectl create serviceaccount chaos-viewer -n chaos-mesh
+
+# Bind appropriate role
+kubectl create rolebinding chaos-viewer \
+  --clusterrole=chaos-mesh-chaos-dashboard-target-namespace \
+  --serviceaccount=chaos-mesh:chaos-viewer \
+  -n chaos-mesh
+
+# Get the token
+kubectl create token chaos-viewer -n chaos-mesh --duration=24h
+```
+
+#### Run Chaos Daemon Without Privileged Mode
+
+```yaml
+chaosDaemon:
+  privileged: false
+  capabilities:
+    add:
+      - SYS_PTRACE
+      - NET_ADMIN
+      - NET_RAW
+      - MKNOD
+      - SYS_CHROOT
+      - SYS_ADMIN
+      - KILL
+      - IPC_LOCK
+```
+
+#### Filter Namespaces
+
+Only allow chaos injection in annotated namespaces:
+
+```yaml
+controllerManager:
+  enableFilterNamespace: true
+```
+
+Then annotate allowed namespaces:
+
+```bash
+kubectl annotate namespace demo chaos-mesh.org/inject=enabled
+```
+
+### High Availability Setup
+
+```yaml
+controllerManager:
+  # Run multiple replicas
+  replicaCount: 3
+  
+  # Enable leader election
+  leaderElection:
+    enabled: true
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+  
+  # Pod anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/component
+                operator: In
+                values:
+                  - controller-manager
+          topologyKey: kubernetes.io/hostname
+
+dnsServer:
+  replicas: 3
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - chaos-dns-server
+            topologyKey: kubernetes.io/hostname
+```
+
+### Ingress Configuration
+
+Expose the dashboard via Ingress:
+
+```yaml
+dashboard:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - name: chaos.example.com
+        tls: true
+        tlsSecret: chaos-dashboard-tls
+```
+
+### Custom Image Registry
+
+Use your own container registry:
+
+```yaml
+images:
+  registry: myregistry.example.com
+  tag: v2.6.0
+
+imagePullSecrets:
+  - name: my-registry-secret
+```
+
+## Verification
+
+After installation, verify all components are running:
+
+```bash
+# Check pod status
+kubectl get pods -n chaos-mesh
+
+# Expected output:
+NAME                                        READY   STATUS    RESTARTS   AGE
+chaos-controller-manager-xxx-yyy            1/1     Running   0          2m
+chaos-controller-manager-xxx-zzz            1/1     Running   0          2m
+chaos-controller-manager-xxx-aaa            1/1     Running   0          2m
+chaos-daemon-xxxxx                          1/1     Running   0          2m
+chaos-daemon-yyyyy                          1/1     Running   0          2m
+chaos-dashboard-xxxxx                       1/1     Running   0          2m
+chaos-dns-server-xxxxx                      1/1     Running   0          2m
+```
+
+Verify CRDs are installed:
+
+```bash
+kubectl get crds | grep chaos-mesh.org
+```
+
+Expected CRDs:
+- `awschaos.chaos-mesh.org`
+- `azurechaos.chaos-mesh.org`
+- `blockchaos.chaos-mesh.org`
+- `dnschaos.chaos-mesh.org`
+- `gcpchaos.chaos-mesh.org`
+- `httpchaos.chaos-mesh.org`
+- `iochaos.chaos-mesh.org`
+- `jvmchaos.chaos-mesh.org`
+- `kernelchaos.chaos-mesh.org`
+- `networkchaos.chaos-mesh.org`
+- `physicalmachinechaos.chaos-mesh.org`
+- `podchaos.chaos-mesh.org`
+- `remotecluster.chaos-mesh.org`
+- `schedule.chaos-mesh.org`
+- `stresschaos.chaos-mesh.org`
+- `timechaos.chaos-mesh.org`
+- `workflow.chaos-mesh.org`
+
+## Upgrading Chaos Mesh
+
+<Tabs>
+  <Tab title="Helm">
+    ```bash
+    # Update repository
+    helm repo update
+
+    # Upgrade to latest version
+    helm upgrade chaos-mesh chaos-mesh/chaos-mesh \
+      --namespace chaos-mesh \
+      --values values-production.yaml
+
+    # Upgrade to specific version
+    helm upgrade chaos-mesh chaos-mesh/chaos-mesh \
+      --namespace chaos-mesh \
+      --version v2.6.0 \
+      --values values-production.yaml
+    ```
+  </Tab>
+
+  <Tab title="Script">
+    ```bash
+    # Re-run install script with --force-chaos-mesh flag
+    curl -sSL https://mirrors.chaos-mesh.org/latest/install.sh | bash -s -- \
+      --version v2.6.0 \
+      --force-chaos-mesh
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Always test upgrades in a non-production environment first. Check the [release notes](https://github.com/chaos-mesh/chaos-mesh/releases) for breaking changes.
+</Warning>
+
+## Uninstallation
+
+<Tabs>
+  <Tab title="Helm">
+    ```bash
+    # Uninstall Chaos Mesh
+    helm uninstall chaos-mesh --namespace chaos-mesh
+
+    # Delete CRDs (optional)
+    kubectl delete crd $(kubectl get crd | grep chaos-mesh.org | awk '{print $1}')
+
+    # Delete namespace
+    kubectl delete namespace chaos-mesh
+    ```
+  </Tab>
+
+  <Tab title="Manifests">
+    ```bash
+    # Delete Chaos Mesh components
+    kubectl delete -f https://mirrors.chaos-mesh.org/latest/chaos-mesh.yaml
+
+    # Delete CRDs
+    kubectl delete -f https://mirrors.chaos-mesh.org/latest/crd.yaml
+
+    # Delete namespace
+    kubectl delete namespace chaos-mesh
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Deleting CRDs will also delete all chaos experiments. Ensure you have backups if needed.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Chaos Daemon pods in CrashLoopBackOff">
+    **Cause**: Incorrect runtime or socket path configuration
+
+    **Solution**:
+    1. Check your container runtime:
+       ```bash
+       kubectl get nodes -o wide
+       ```
+    2. Verify the socket path exists on nodes
+    3. Reinstall with correct runtime settings:
+       ```bash
+       helm upgrade chaos-mesh chaos-mesh/chaos-mesh \
+         --namespace chaos-mesh \
+         --set chaosDaemon.runtime=containerd \
+         --set chaosDaemon.socketPath=/run/containerd/containerd.sock
+       ```
+  </Accordion>
+
+  <Accordion title="Controller Manager fails to start">
+    **Cause**: Webhook certificate issues or RBAC problems
+
+    **Solution**:
+    1. Check controller logs:
+       ```bash
+       kubectl logs -n chaos-mesh -l app.kubernetes.io/component=controller-manager
+       ```
+    2. Verify webhook configuration:
+       ```bash
+       kubectl get validatingwebhookconfigurations
+       kubectl get mutatingwebhookconfigurations
+       ```
+    3. Delete and recreate webhook certificates:
+       ```bash
+       kubectl delete secret chaos-mesh-webhook-certs -n chaos-mesh
+       kubectl rollout restart deployment chaos-controller-manager -n chaos-mesh
+       ```
+  </Accordion>
+
+  <Accordion title="Dashboard not accessible">
+    **Cause**: Service not exposed or port-forward issues
+
+    **Solution**:
+    1. Verify dashboard pod is running:
+       ```bash
+       kubectl get pods -n chaos-mesh -l app.kubernetes.io/component=chaos-dashboard
+       ```
+    2. Check service:
+       ```bash
+       kubectl get svc chaos-dashboard -n chaos-mesh
+       ```
+    3. Use correct port-forward command:
+       ```bash
+       kubectl port-forward -n chaos-mesh svc/chaos-dashboard 2333:2333
+       ```
+  </Accordion>
+
+  <Accordion title="Experiments not affecting target pods">
+    **Possible causes**:
+    - Label selectors don't match target pods
+    - Namespace filtering is enabled
+    - Target namespace doesn't have proper annotations
+    - Chaos daemon not running on target nodes
+
+    **Debug steps**:
+    ```bash
+    # Verify label selectors match
+    kubectl get pods -n <namespace> --show-labels
+
+    # Check chaos daemon is on all nodes
+    kubectl get pods -n chaos-mesh -l app.kubernetes.io/component=chaos-daemon -o wide
+
+    # Describe the chaos experiment
+    kubectl describe <chaos-kind> <name> -n <namespace>
+
+    # Check if namespace filtering is enabled
+    helm get values chaos-mesh -n chaos-mesh
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied errors">
+    **Cause**: Insufficient RBAC permissions or privileged mode disabled without proper capabilities
+
+    **Solution**:
+    1. For RBAC issues, ensure service accounts have proper roles:
+       ```bash
+       kubectl get clusterrolebindings | grep chaos-mesh
+       ```
+    2. For capabilities issues, enable privileged mode:
+       ```bash
+       helm upgrade chaos-mesh chaos-mesh/chaos-mesh \
+         --namespace chaos-mesh \
+         --set chaosDaemon.privileged=true
+       ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Run Your First Experiment" icon="flask" href="/quickstart">
+    Follow the quick start guide to create your first chaos experiment
+  </Card>
+  <Card title="Security Best Practices" icon="shield">
+    Learn about RBAC, security modes, and production hardening
+  </Card>
+  <Card title="Monitoring Integration" icon="chart-line">
+    Set up Prometheus and Grafana for chaos experiment observability
+  </Card>
+  <Card title="Advanced Configuration" icon="gears">
+    Explore workflows, schedules, and complex experiment orchestration
+  </Card>
+</CardGroup>

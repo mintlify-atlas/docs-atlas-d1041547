@@ -1,0 +1,275 @@
+---
+title: JVMChaos
+description: Inject faults into JVM applications using Byteman
+---
+
+JVMChaos allows you to inject various types of faults into Java Virtual Machine (JVM) applications using Byteman rules. This enables testing application resilience to exceptions, latency, modified return values, and resource stress.
+
+## Actions
+
+JVMChaos supports the following actions:
+
+- **latency**: Add latency to method invocations
+- **return**: Modify method return values
+- **exception**: Throw custom exceptions from methods
+- **stress**: Stress CPU or memory resources
+- **gc**: Trigger garbage collection
+- **ruleData**: Inject faults using custom Byteman rules
+- **mysql**: Inject faults into MySQL JDBC connections
+
+## Spec Fields
+
+<ParamField path="spec.action" type="string" required>
+  The JVM chaos action to perform.
+  
+  **Options:** `latency`, `return`, `exception`, `stress`, `gc`, `ruleData`, `mysql`
+</ParamField>
+
+<ParamField path="spec.duration" type="string">
+  Duration of the chaos action (e.g., `30s`, `5m`, `1h`).
+</ParamField>
+
+<ParamField path="spec.selector" type="object" required>
+  Pod selector to target specific pods. See [Selector](/concepts/selectors) for details.
+</ParamField>
+
+<ParamField path="spec.mode" type="string" required>
+  Selection mode for target pods.
+  
+  **Options:** `one`, `all`, `fixed`, `fixed-percent`, `random-max-percent`
+</ParamField>
+
+<ParamField path="spec.containerNames" type="array">
+  List of container names to affect. If not set, the first container will be injected.
+</ParamField>
+
+### Common Parameters
+
+<ParamField path="spec.port" type="integer">
+  Port of the agent server.
+  
+  **Default:** `9277`
+</ParamField>
+
+<ParamField path="spec.pid" type="integer">
+  Process ID of the Java process to attach to.
+</ParamField>
+
+### Method Targeting (latency, return, exception)
+
+<ParamField path="spec.class" type="string">
+  Java class name to target.
+</ParamField>
+
+<ParamField path="spec.method" type="string">
+  Method name in the Java class to target.
+</ParamField>
+
+### Action-Specific Parameters
+
+#### Latency Action
+
+<ParamField path="spec.latency" type="integer">
+  Latency duration in milliseconds.
+</ParamField>
+
+#### Return Action
+
+<ParamField path="spec.value" type="string">
+  The return value to use (as string representation).
+</ParamField>
+
+#### Exception Action
+
+<ParamField path="spec.exception" type="string">
+  The exception to throw, including constructor arguments.
+  
+  **Example:** `java.io.IOException("BOOM")`
+</ParamField>
+
+#### Stress Action
+
+<ParamField path="spec.cpuCount" type="integer">
+  Number of CPU cores to stress.
+</ParamField>
+
+<ParamField path="spec.memType" type="string">
+  Memory type to stress.
+  
+  **Options:** `stack`, `heap`
+</ParamField>
+
+#### RuleData Action
+
+<ParamField path="spec.ruleData" type="string">
+  Custom Byteman rule data. See [Byteman Rule Language](https://downloads.jboss.org/byteman/4.0.14/byteman-programmers-guide.html#the-byteman-rule-language) for syntax.
+</ParamField>
+
+<ParamField path="spec.name" type="string">
+  Byteman rule name. Should be unique. Will be generated if not set.
+</ParamField>
+
+#### MySQL Action
+
+<ParamField path="spec.mysqlConnectorVersion" type="string">
+  Version of mysql-connector-java.
+  
+  **Options:** `5` (for 5.X.X), `8` (for 8.X.X)
+</ParamField>
+
+<ParamField path="spec.database" type="string">
+  Database name to match. Empty string matches all databases.
+</ParamField>
+
+<ParamField path="spec.table" type="string">
+  Table name to match. Empty string matches all tables.
+</ParamField>
+
+<ParamField path="spec.sqlType" type="string">
+  SQL statement type to match. Empty string matches all types.
+  
+  **Options:** `select`, `insert`, `update`, `delete`, `replace`
+</ParamField>
+
+<ParamField path="spec.remoteCluster" type="string">
+  Remote cluster name where the chaos will be deployed.
+</ParamField>
+
+## Examples
+
+### Throw Exception
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: exception
+spec:
+  action: exception
+  class: Main
+  method: sayhello
+  exception: java.io.IOException("BOOM")
+  mode: all
+  selector:
+    namespaces:
+      - helloworld
+```
+
+This example throws an `IOException` whenever the `sayhello` method is called in the `Main` class.
+
+### Modify Return Value
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: return
+spec:
+  action: return
+  class: Main
+  method: getnum
+  value: "9999"
+  mode: all
+  selector:
+    namespaces:
+      - helloworld
+```
+
+This example forces the `getnum` method to return `9999` instead of its normal return value.
+
+### Custom Byteman Rule
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: modify-return
+spec:
+  action: ruleData
+  ruleData: |
+    RULE modify return value
+    CLASS Main
+    METHOD getnum
+    AT ENTRY
+    IF true
+    DO
+        return 9999
+    ENDRULE
+  mode: all
+  selector:
+    namespaces:
+      - helloworld
+```
+
+This example uses a custom Byteman rule to modify the return value. This provides more flexibility than the built-in actions.
+
+### Add Latency to Method
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: latency
+spec:
+  action: latency
+  class: com.example.Service
+  method: processRequest
+  latency: 5000
+  mode: fixed-percent
+  value: "50"
+  selector:
+    namespaces:
+      - production
+    labelSelectors:
+      app: backend
+  duration: "10m"
+```
+
+This example adds 5000ms (5 seconds) of latency to the `processRequest` method in 50% of the targeted pods.
+
+### Trigger Garbage Collection
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: JVMChaos
+metadata:
+  name: gc-trigger
+spec:
+  action: gc
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: memory-intensive
+  duration: "1m"
+```
+
+This example triggers garbage collection in all matching pods.
+
+## Prerequisites
+
+1. **Java Agent**: The target JVM must have the Chaos Mesh Java agent attached
+2. **Agent Server Port**: The agent server must be accessible (default port 9277)
+3. **Byteman**: Uses Byteman for rule injection
+
+## Implementation Details
+
+JVMChaos works by:
+1. Connecting to the Chaos Mesh Java agent running in the target pod
+2. Injecting Byteman rules into the JVM
+3. The rules intercept method calls and modify behavior according to the action
+
+Source: `api/v1alpha1/jvmchaos_types.go:22-70`
+
+## MySQL Fault Injection
+
+The MySQL action allows injecting faults into MySQL connections. The fault is only triggered when all matching conditions are met:
+
+- SQL statement matches the database (or database is empty)
+- SQL statement matches the table (or table is empty)  
+- SQL statement matches the sqlType (or sqlType is empty)
+
+For example, with `database: "test"`, `table: "t1"`, `sqlType: "select"`, only `SELECT` statements on `test.t1` will be affected.
+
+Source: `api/v1alpha1/jvmchaos_types.go:136-158`

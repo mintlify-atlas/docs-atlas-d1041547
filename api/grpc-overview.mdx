@@ -1,0 +1,346 @@
+---
+title: gRPC API Overview
+description: ChaosDaemon gRPC service API reference
+---
+
+## ChaosDaemon Service
+
+The ChaosDaemon gRPC service provides the low-level interface for executing chaos experiments on target nodes. It runs as a privileged DaemonSet and handles the actual injection of faults into containers.
+
+### Service Definition
+
+The ChaosDaemon service is defined in `pkg/chaosdaemon/pb/chaosdaemon.proto` and provides the following RPC methods:
+
+## Network Chaos Methods
+
+### SetTcs
+
+Configures traffic control (tc) rules for network chaos.
+
+<ParamField path="request" type="TcsRequest">
+  Request containing tc configurations and target container.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+### FlushIPSets
+
+Flushes and configures IPSet rules for network filtering.
+
+<ParamField path="request" type="IPSetsRequest">
+  Request containing IPSet configurations.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+### SetIptablesChains
+
+Configures iptables chains for network filtering and manipulation.
+
+<ParamField path="request" type="IptablesChainsRequest">
+  Request containing iptables chain configurations.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## Time Chaos Methods
+
+### SetTimeOffset
+
+Applies time offset to target containers.
+
+<ParamField path="request" type="TimeRequest">
+  Request specifying time offset and target container.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+### RecoverTimeOffset
+
+Recoves time offset from target containers.
+
+<ParamField path="request" type="TimeRequest">
+  Request specifying target container to recover.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## Container Methods
+
+### ContainerKill
+
+Kills a target container.
+
+<ParamField path="request" type="ContainerRequest">
+  Request specifying container to kill.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+### ContainerGetPid
+
+Retrieves the PID of a target container's main process.
+
+<ParamField path="request" type="ContainerRequest">
+  Request specifying target container.
+</ParamField>
+
+<ResponseField name="response" type="ContainerResponse">
+  Response containing the container's PID.
+</ResponseField>
+
+## Stress Chaos Methods
+
+### ExecStressors
+
+Executes stress-ng stressors in target container or pod.
+
+<ParamField path="request" type="ExecStressRequest">
+  Request containing stress configuration (CPU/memory stressors).
+</ParamField>
+
+<ResponseField name="response" type="ExecStressResponse">
+  Response containing instance IDs and start times for tracking.
+</ResponseField>
+
+### CancelStressors
+
+Cancels running stress-ng instances.
+
+<ParamField path="request" type="CancelStressRequest">
+  Request specifying stress instances to cancel.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## I/O Chaos Methods
+
+### ApplyIOChaos
+
+Applies I/O chaos to target container's volume.
+
+<ParamField path="request" type="ApplyIOChaosRequest">
+  Request containing I/O chaos actions and target volume.
+</ParamField>
+
+<ResponseField name="response" type="ApplyIOChaosResponse">
+  Response containing instance ID and start time for tracking.
+</ResponseField>
+
+## HTTP Chaos Methods
+
+### ApplyHttpChaos
+
+Applies HTTP chaos rules to target container.
+
+<ParamField path="request" type="ApplyHttpChaosRequest">
+  Request containing HTTP chaos rules and proxy configuration.
+</ParamField>
+
+<ResponseField name="response" type="ApplyHttpChaosResponse">
+  Response containing instance ID, status code, and any errors.
+</ResponseField>
+
+## Block Chaos Methods
+
+### ApplyBlockChaos
+
+Applies block device chaos (delay) to target volume.
+
+<ParamField path="request" type="ApplyBlockChaosRequest">
+  Request containing block chaos configuration.
+</ParamField>
+
+<ResponseField name="response" type="ApplyBlockChaosResponse">
+  Response containing injection ID for recovery.
+</ResponseField>
+
+### RecoverBlockChaos
+
+Recovers from block device chaos.
+
+<ParamField path="request" type="RecoverBlockChaosRequest">
+  Request specifying injection ID to recover.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## DNS Chaos Methods
+
+### SetDNSServer
+
+Configures custom DNS server for target container.
+
+<ParamField path="request" type="SetDNSServerRequest">
+  Request specifying DNS server and target container.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## JVM Chaos Methods
+
+### InstallJVMRules
+
+Installs Byteman rules for JVM chaos.
+
+<ParamField path="request" type="InstallJVMRulesRequest">
+  Request containing Byteman rules and target JVM.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+### UninstallJVMRules
+
+Uninstalls Byteman rules from JVM.
+
+<ParamField path="request" type="UninstallJVMRulesRequest">
+  Request specifying rules to uninstall.
+</ParamField>
+
+<ResponseField name="response" type="google.protobuf.Empty">
+  Empty response on success.
+</ResponseField>
+
+## Common Message Types
+
+### TimeRequest
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="sec" type="int64">
+  Seconds component of time offset.
+</ParamField>
+
+<ParamField path="nsec" type="int64">
+  Nanoseconds component of time offset.
+</ParamField>
+
+<ParamField path="clk_ids_mask" type="uint64">
+  Bitmask of clock IDs to affect.
+</ParamField>
+
+<ParamField path="uid" type="string">
+  Unique identifier for this injection.
+</ParamField>
+
+<ParamField path="pod_container_name" type="string">
+  Pod container name for reference.
+</ParamField>
+
+### ExecStressRequest
+
+<ParamField path="scope" type="Scope">
+  Execution scope: `CONTAINER` or `POD`.
+</ParamField>
+
+<ParamField path="target" type="string">
+  Target container or pod identifier.
+</ParamField>
+
+<ParamField path="cpuStressors" type="string">
+  stress-ng CPU stressor arguments.
+</ParamField>
+
+<ParamField path="memoryStressors" type="string">
+  stress-ng memory stressor arguments.
+</ParamField>
+
+<ParamField path="oomScoreAdj" type="int32">
+  OOM score adjustment for stress process.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter target namespace.
+</ParamField>
+
+### ExecStressResponse
+
+<ResponseField name="cpuInstance" type="string">
+  CPU stress instance identifier.
+</ResponseField>
+
+<ResponseField name="cpuStartTime" type="int64">
+  CPU stress start timestamp.
+</ResponseField>
+
+<ResponseField name="memoryInstance" type="string">
+  Memory stress instance identifier.
+</ResponseField>
+
+<ResponseField name="memoryStartTime" type="int64">
+  Memory stress start timestamp.
+</ResponseField>
+
+<ResponseField name="cpuInstanceUid" type="string">
+  CPU stress unique identifier.
+</ResponseField>
+
+<ResponseField name="memoryInstanceUid" type="string">
+  Memory stress unique identifier.
+</ResponseField>
+
+### ApplyIOChaosRequest
+
+<ParamField path="actions" type="string">
+  Serialized JSON of I/O chaos actions.
+</ParamField>
+
+<ParamField path="volume" type="string">
+  Target volume mount path.
+</ParamField>
+
+<ParamField path="container_id" type="string">
+  Target container ID.
+</ParamField>
+
+<ParamField path="instance" type="int64">
+  Instance ID for tracking.
+</ParamField>
+
+<ParamField path="startTime" type="int64">
+  Start timestamp.
+</ParamField>
+
+<ParamField path="enterNS" type="bool">
+  Whether to enter target namespace.
+</ParamField>
+
+<ParamField path="instance_uid" type="string">
+  Unique identifier for this injection.
+</ParamField>
+
+### ApplyIOChaosResponse
+
+<ResponseField name="instance" type="int64">
+  Instance ID for recovery.
+</ResponseField>
+
+<ResponseField name="startTime" type="int64">
+  Start timestamp.
+</ResponseField>
+
+<ResponseField name="instance_uid" type="string">
+  Unique identifier.
+</ResponseField>

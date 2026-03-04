@@ -1,0 +1,296 @@
+---
+title: Contributing Guide
+description: Step-by-step guide for contributing to Chaos Mesh
+---
+
+Thanks for your interest in improving Chaos Mesh! This document provides a step-by-step guide for contributing to the project.
+
+## Before You Start
+
+Before starting work on something major, please reach out to us via:
+
+- **GitHub**: Open an issue to discuss your proposed changes
+- **Slack**: Join `#project-chaos-mesh` in the [CNCF Slack](https://slack.cncf.io/)
+- **Twitter**: Follow us [@chaos_mesh](https://twitter.com/chaos_mesh)
+
+This helps ensure:
+- No one else is already working on it
+- The approach aligns with project goals
+- You get necessary guidance and support
+
+<Note>
+For developing a specific chaos type, refer to the [Developer Guide](/development/developer-guide) for detailed architecture and implementation guidance.
+</Note>
+
+## Submitting a Pull Request
+
+Follow these steps to submit a successful PR:
+
+### Step 1: Make Changes
+
+#### 1.1 Fork and Clone
+
+Fork the Chaos Mesh repository and clone it locally:
+
+```bash
+git clone git@github.com:your-github-username/chaos-mesh.git
+cd chaos-mesh
+```
+
+#### 1.2 Set Up Upstream Remote
+
+Configure your local repository to track the upstream repository:
+
+```bash
+git remote add upstream https://github.com/chaos-mesh/chaos-mesh
+```
+
+#### 1.3 Disable Pushing to Upstream Master
+
+Prevent accidentally pushing to upstream:
+
+```bash
+git remote set-url --push upstream no_push
+git remote -v
+```
+
+The output should look like:
+
+```bash
+origin    git@github.com:your-github-username/chaos-mesh.git (fetch)
+origin    git@github.com:your-github-username/chaos-mesh.git (push)
+upstream  https://github.com/chaos-mesh/chaos-mesh (fetch)
+upstream  no_push (push)
+```
+
+#### 1.4 Create a Working Branch
+
+Get your local master up-to-date and create your working branch:
+
+```bash
+git fetch upstream
+git checkout master
+git rebase upstream/master
+git checkout -b new-feature
+```
+
+#### 1.5 Make Your Changes
+
+You can now edit the code on the `new-feature` branch.
+
+If you need to update CRD manifests according to your struct changes:
+
+```bash
+make generate
+make manifests/crd.yaml
+```
+
+#### 1.6 Check Your Changes
+
+Run quality checks to ensure your code passes all requirements:
+
+```bash
+make check
+```
+
+<Warning>
+If `make check` shows errors (formatting, linting, etc.), please fix them before submitting the PR.
+</Warning>
+
+This command runs:
+- `make generate`: Regenerates all generated code
+- `make vet`: Runs `go vet`
+- `make lint`: Runs `revive` linter
+- `make fmt`: Formats code with `goimports`
+- `make tidy`: Ensures `go.mod` is tidy
+- `make install.sh`: Regenerates install script
+- `make helm-values-schema`: Updates Helm values schema
+
+### Step 2: Run Unit Tests
+
+Before testing in a real Kubernetes cluster, ensure all unit tests pass:
+
+```bash
+make test
+```
+
+This command:
+- Enables failpoint support for testing
+- Runs all tests in the project
+- Generates code coverage reports
+
+<Note>
+Tests run with `USE_EXISTING_CLUSTER=false` to use the envtest framework, which doesn't require a real cluster.
+</Note>
+
+### Step 3: Manual Testing
+
+Test your changes in a real Kubernetes cluster:
+
+1. Set up a development environment following the [Configure the Development Environment](https://chaos-mesh.org/docs/configure-development-environment/) guide
+
+2. Deploy your changes to the cluster
+
+3. Create and run chaos experiments to verify your changes work as expected
+
+4. Monitor logs and metrics to ensure everything functions correctly
+
+### Step 4: Commit and Push Changes
+
+Congratulations! You've finished testing and are ready to commit.
+
+#### 4.1 Sync Your Branch
+
+Keep your branch in sync with upstream:
+
+```bash
+git fetch upstream
+git rebase upstream/master
+```
+
+#### 4.2 Commit with Sign-off
+
+<Warning>
+All commits must be signed off to comply with the Developer Certificate of Origin (DCO).
+</Warning>
+
+Commit your changes with sign-off:
+
+```bash
+git add -A
+git commit --signoff
+```
+
+Write a clear, descriptive commit message that:
+- Summarizes what changed
+- Explains why the change was made
+- References any related issues
+
+Example commit message:
+```
+Add support for network partition chaos
+
+This commit adds NetworkPartitionChaos to simulate network
+partition scenarios between pods. It implements the controller
+logic and adds necessary webhooks for validation.
+
+Fixes #1234
+
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+#### 4.3 Push to Your Fork
+
+Push your changes to your forked repository:
+
+```bash
+git push origin new-feature
+```
+
+### Step 5: Create a Pull Request
+
+1. Navigate to the [Chaos Mesh repository](https://github.com/chaos-mesh/chaos-mesh)
+
+2. Click "New Pull Request"
+
+3. Select your fork and branch
+
+4. Fill out the pull request template with:
+   - **Description**: What changes you made and why
+   - **Related Issue**: Link to the issue this PR addresses
+   - **Type of Change**: Bug fix, feature, documentation, etc.
+   - **Testing**: How you tested these changes
+   - **Checklist**: Complete all items in the PR template checklist
+
+5. Submit the pull request
+
+### Step 6: Get a Code Review
+
+Once your pull request is opened:
+
+1. **Reviewers Assigned**: At least two reviewers will be assigned
+
+2. **Code Review**: Reviewers will check for:
+   - Correctness and bugs
+   - Opportunities for improvement
+   - Documentation and comments
+   - Code style and best practices
+
+3. **Address Feedback**: Commit changes made in response to review comments to the same branch:
+   ```bash
+   git add -A
+   git commit --signoff -m "Address review feedback"
+   git push origin new-feature
+   ```
+
+4. **Continuous Integration**: Ensure all CI checks pass:
+   - Unit tests
+   - E2E tests
+   - Linting and formatting
+   - Security scans
+
+5. **Approval and Merge**: Once approved, a maintainer will merge your PR
+
+## Development Guidelines
+
+### Code Quality Standards
+
+- **Formatting**: Use `goimports` with `-local github.com/chaos-mesh/chaos-mesh`
+- **Linting**: Pass `revive` checks (configuration in `revive.toml`)
+- **Testing**: Add unit tests for new functionality
+- **Documentation**: Update docs for user-facing changes
+- **Comments**: Add clear comments for complex logic
+
+### Controller Development
+
+When adding or modifying controllers, follow these principles:
+
+1. **One Controller Per Field**: Each field should be controlled by at most one controller
+2. **Standalone Operation**: Controllers should work independently
+3. **Simple Behavior**: Controller logic should be describable in ~100 words
+4. **Error Handling**: Use `ctrl.Result{Requeue: true}, nil` for retriable errors
+
+See the [Controller Design Principles](/concepts/architecture) for details.
+
+### Multi-Module Project
+
+<Note>
+Chaos Mesh is a multi-module Go project. When updating dependencies, run `go mod tidy` in all directories:
+- Root directory
+- `api/`
+- `e2e-test/`
+- `e2e-test/cmd/e2e_helper/`
+</Note>
+
+## Communication Channels
+
+### Community Meetings
+
+**Chaos Mesh Community Monthly**
+- Time: Fourth Thursday of every month
+- [RSVP here](https://community.cncf.io/chaos-mesh-community/)
+- [Meeting minutes](https://docs.google.com/document/d/1H8IfmhIJiJ1ltg-XLjqR_P_RaMHUGrl1CzvHnKM_9Sc/edit?usp=sharing)
+
+**Chaos Mesh Development Meeting**
+- Time: Every other Tuesday
+- [RSVP here](https://community.cncf.io/chaos-mesh-community/)
+- [Meeting minutes](https://docs.google.com/document/d/1s9X6tTOy3OGZaLDZQesGw1BNOrxQfWExjBFIn5irpPE/edit)
+
+### Getting Help
+
+- **GitHub Issues**: Report bugs or request features
+- **CNCF Slack**: Join `#project-chaos-mesh` for real-time discussions
+- **Twitter**: Follow [@chaos_mesh](https://twitter.com/chaos_mesh) for updates
+
+## Resources
+
+- [Developer Guide](/development/developer-guide) - Comprehensive development documentation
+- [Build System](/development/build-system) - Understanding the build infrastructure
+- [Official Documentation](https://chaos-mesh.org/docs/) - User and developer guides
+- [GitHub Repository](https://github.com/chaos-mesh/chaos-mesh) - Source code and issues
+
+## License and DCO
+
+By contributing to Chaos Mesh, you agree that your contributions will be licensed under the Apache License, Version 2.0.
+
+All commits must include a `Signed-off-by` line (use `git commit --signoff`) to indicate you agree to the [Developer Certificate of Origin](https://developercertificate.org/).

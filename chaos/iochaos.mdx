@@ -1,0 +1,287 @@
+---
+title: IOChaos
+description: Inject I/O failures and delays into file system operations
+---
+
+IOChaos allows you to simulate I/O failures, delays, and attribute modifications to test how your application handles file system issues and storage failures.
+
+## Supported Actions
+
+IOChaos supports four types of I/O chaos:
+
+- **latency**: Add delay to I/O operations
+- **fault**: Return error codes from I/O operations
+- **attrOverride**: Override file attributes (permissions, timestamps, size, etc.)
+- **mistake**: Inject incorrect data into read/write operations
+
+## Configuration
+
+### Basic Example
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-delay-example
+spec:
+  action: latency
+  mode: one
+  selector:
+    labelSelectors:
+      app: etcd
+  volumePath: /var/run/etcd
+  path: /var/run/etcd/**/*
+  delay: "10ms"
+  percent: 10
+  duration: "400s"
+```
+
+## Spec Fields
+
+<ParamField path="action" type="string" required>
+  The I/O chaos action to perform. Must be one of:
+  - `latency`: Add delay to I/O operations
+  - `fault`: Return errno from I/O operations
+  - `attrOverride`: Override file attributes
+  - `mistake`: Inject incorrect data
+</ParamField>
+
+<ParamField path="selector" type="PodSelectorSpec" required>
+  Specifies the target pods for the chaos experiment. See PodChaos documentation for selector details.
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Selection mode: `one`, `all`, `fixed`, `fixed-percent`, or `random-max-percent`
+</ParamField>
+
+<ParamField path="volumePath" type="string" required>
+  The mount path of the volume to inject I/O chaos. Must be a root of a mount path.
+</ParamField>
+
+<ParamField path="path" type="string">
+  The path of files for injecting I/O chaos action. Supports glob patterns (e.g., `/var/run/etcd/**/*`)
+</ParamField>
+
+<ParamField path="percent" type="integer" default="100">
+  Percentage of I/O operations to affect (0-100)
+</ParamField>
+
+<ParamField path="duration" type="string">
+  Duration of the chaos action. Format: "300ms", "1.5h", "2h45m"
+</ParamField>
+
+<ParamField path="containerNames" type="string[]">
+  List of container names to inject chaos into. If not set, the first container will be injected.
+</ParamField>
+
+### Action-Specific Fields
+
+<ParamField path="delay" type="string">
+  Amount of delay to add (required when action is `latency`). Format: "300ms", "10ms", "1s". Valid units: ns, us, ms, s, m, h.
+</ParamField>
+
+<ParamField path="errno" type="uint32">
+  Error code to return from I/O operations (required when action is `fault`). See [Linux error codes](https://www-numi.fnal.gov/offline_software/srt_public_context/WebDocs/Errors/unix_system_errors.html)
+</ParamField>
+
+<ParamField path="attr" type="AttrOverrideSpec">
+  File attributes to override (required when action is `attrOverride`)
+
+  <Expandable title="AttrOverrideSpec fields">
+    <ParamField path="ino" type="uint64">
+      Inode number
+    </ParamField>
+
+    <ParamField path="size" type="uint64">
+      File size in bytes
+    </ParamField>
+
+    <ParamField path="blocks" type="uint64">
+      Number of blocks
+    </ParamField>
+
+    <ParamField path="atime" type="Timespec">
+      Access time
+      
+      <Expandable title="Timespec fields">
+        <ParamField path="sec" type="int64">
+          Seconds since epoch
+        </ParamField>
+        
+        <ParamField path="nsec" type="int64">
+          Nanoseconds
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="mtime" type="Timespec">
+      Modification time
+    </ParamField>
+
+    <ParamField path="ctime" type="Timespec">
+      Change time
+    </ParamField>
+
+    <ParamField path="kind" type="FileType">
+      File type: `namedPipe`, `charDevice`, `blockDevice`, `directory`, `regularFile`, `symlink`, `socket`
+    </ParamField>
+
+    <ParamField path="perm" type="uint16">
+      File permissions (octal, e.g., 72 for 0110)
+    </ParamField>
+
+    <ParamField path="nlink" type="uint32">
+      Number of hard links
+    </ParamField>
+
+    <ParamField path="uid" type="uint32">
+      User ID
+    </ParamField>
+
+    <ParamField path="gid" type="uint32">
+      Group ID
+    </ParamField>
+
+    <ParamField path="rdev" type="uint32">
+      Device ID (if special file)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="mistake" type="MistakeSpec">
+  Mistake injection configuration (required when action is `mistake`)
+
+  <Expandable title="MistakeSpec fields">
+    <ParamField path="filling" type="string">
+      Type of data to fill: `zero` or `random`
+    </ParamField>
+
+    <ParamField path="maxOccurrences" type="int64">
+      Maximum number of wrong data segments (minimum: 1)
+    </ParamField>
+
+    <ParamField path="maxLength" type="int64">
+      Maximum length of each wrong data segment in bytes (minimum: 1)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="methods" type="IoMethod[]">
+  I/O methods to inject chaos into. If not specified, all methods are affected. Available methods:
+  
+  `lookup`, `forget`, `getattr`, `setattr`, `readlink`, `mknod`, `mkdir`, `unlink`, `rmdir`, `symlink`, `rename`, `link`, `open`, `read`, `write`, `flush`, `release`, `fsync`, `opendir`, `readdir`, `releasedir`, `fsyncdir`, `statfs`, `setxattr`, `getxattr`, `listxattr`, `removexattr`, `access`, `create`, `getlk`, `setlk`, `bmap`
+</ParamField>
+
+<ParamField path="remoteCluster" type="string">
+  Remote cluster where chaos will be deployed
+</ParamField>
+
+## Examples
+
+### I/O Latency
+
+Add 10ms delay to 10% of I/O operations:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-delay-example
+spec:
+  action: latency
+  mode: one
+  selector:
+    labelSelectors:
+      app: etcd
+  volumePath: /var/run/etcd
+  path: /var/run/etcd/**/*
+  delay: "10ms"
+  percent: 10
+  duration: "400s"
+```
+
+### I/O Errors
+
+Return errno 5 (EIO - I/O error) for 50% of I/O operations:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-errno-example
+spec:
+  action: fault
+  mode: one
+  selector:
+    labelSelectors:
+      app: etcd
+  volumePath: /var/run/etcd
+  path: /var/run/etcd/**/*
+  errno: 5
+  percent: 50
+  duration: "400s"
+```
+
+### Attribute Override
+
+Override file permissions:
+
+```yaml
+apiVersion: chaos-mesh.org/v1alpha1
+kind: IOChaos
+metadata:
+  name: io-attr-example
+spec:
+  action: attrOverride
+  mode: one
+  selector:
+    labelSelectors:
+      app: etcd
+  volumePath: /var/run/etcd
+  path: /var/run/etcd/**/*
+  attr:
+    perm: 72
+  percent: 10
+  duration: "400s"
+```
+
+## Use Cases
+
+### Testing Disk Latency
+
+Use the `latency` action to simulate slow storage devices or network-attached storage delays.
+
+### Simulating Disk Failures
+
+Use the `fault` action with appropriate error codes to test how your application handles I/O errors, disk failures, or quota exceeded scenarios.
+
+### Permission Testing
+
+Use `attrOverride` to modify file permissions and test your application's error handling for permission denied scenarios.
+
+### Data Corruption Testing
+
+Use the `mistake` action to inject random or zero data to test data validation and corruption detection mechanisms.
+
+## Best Practices
+
+1. **Volume Path Selection**: Ensure `volumePath` points to a mount point root, not a subdirectory
+2. **Path Patterns**: Use glob patterns to target specific files or directories (e.g., `*.db` for database files)
+3. **Percentage Control**: Start with low percentages (10-20%) to avoid completely blocking I/O
+4. **Method Filtering**: Use the `methods` field to target specific I/O operations (e.g., only `read` or `write`)
+5. **Error Code Selection**: Choose appropriate errno values that match real-world failure scenarios:
+   - errno 5 (EIO): I/O error
+   - errno 28 (ENOSPC): No space left on device
+   - errno 13 (EACCES): Permission denied
+6. **Monitor Application**: Watch application logs and metrics to understand I/O chaos impact
+7. **Container Selection**: Specify `containerNames` when working with multi-container pods
+
+## Notes
+
+- IOChaos is implemented using FUSE (Filesystem in Userspace) and requires the volume to be remounted
+- The chaos daemon intercepts I/O operations at the file system level
+- Path supports glob patterns for flexible file matching
+- All file times in `attrOverride` use Unix timestamp format
+- File permissions in `perm` should be specified as octal values (e.g., 72 decimal = 0110 octal)
+- The `mistake` action can help test data validation and checksumming mechanisms
+- IOChaos requires the target pod to use a volume mount (not hostPath or emptyDir in some cases)

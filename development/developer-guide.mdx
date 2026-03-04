@@ -1,0 +1,333 @@
+---
+title: Developer Guide
+description: Complete guide to developing Chaos Mesh
+---
+
+This guide covers the essential information you need to develop and contribute to Chaos Mesh.
+
+## Project Overview
+
+Chaos Mesh is a cloud-native Chaos Engineering platform for Kubernetes that provides various types of fault simulation. It consists of three main components:
+
+1. **Chaos Controller Manager**: Core component responsible for scheduling and managing Chaos experiments through various CRD controllers (Workflow, Scheduler, and fault type controllers)
+2. **Chaos Daemon**: Runs as a DaemonSet with privileged permissions, interferes with network devices, file systems, and kernels by accessing target Pod namespaces
+3. **Chaos Dashboard**: Web UI for managing, designing, and monitoring Chaos experiments
+
+## Project Structure
+
+The Chaos Mesh codebase is organized as follows:
+
+- `cmd/`: Main entry points for binaries (controller-manager, daemon, dashboard, builder)
+- `controllers/`: Controller implementations and reconciliation logic
+- `pkg/`: Shared packages (chaosdaemon, dashboard, grpc, selector, metrics, etc.)
+- `api/`: CRD API definitions (v1alpha1)
+- `config/`: Kubernetes manifests (CRD, RBAC, webhook)
+- `helm/chaos-mesh/`: Helm chart for deployment
+- `e2e-test/`: End-to-end test suite
+- `images/`: Dockerfiles for all components
+- `hack/`: Build and development scripts
+- `ui/`: Frontend dashboard (pnpm-based)
+
+## Development Workflow
+
+### Before Making Changes
+
+Always run checks to ensure your environment is properly set up:
+
+```bash
+make check
+```
+
+This command runs all quality checks including formatting, linting, and vetting.
+
+### Making Changes
+
+1. **Fork and Clone** the repository:
+   ```bash
+   git clone git@github.com:your-username/chaos-mesh.git
+   cd chaos-mesh
+   ```
+
+2. **Set up upstream** remote:
+   ```bash
+   git remote add upstream https://github.com/chaos-mesh/chaos-mesh
+   git remote set-url --push upstream no_push
+   ```
+
+3. **Create a working branch**:
+   ```bash
+   git fetch upstream
+   git checkout master
+   git rebase upstream/master
+   git checkout -b new-feature
+   ```
+
+4. **Make your changes** in the code
+
+### After Code Changes
+
+Depending on what you modified, you may need to regenerate code:
+
+#### If you modified CRDs or APIs:
+
+```bash
+make generate
+make manifests/crd.yaml
+```
+
+#### Run quality checks:
+
+```bash
+make check
+```
+
+This will:
+- Format code with `goimports`
+- Lint with `revive`
+- Run `go vet`
+- Check `go.mod` is tidy
+- Regenerate install scripts and Helm schemas
+
+### Testing Your Changes
+
+#### Unit Tests
+
+Run all unit tests:
+
+```bash
+make test
+```
+
+This command:
+- Enables failpoint stubs for testing
+- Runs tests with coverage
+- Generates coverage reports in `cover.out`
+
+#### E2E Tests
+
+Build and run end-to-end tests:
+
+```bash
+make e2e-build
+make e2e
+```
+
+<Note>
+E2E tests require a running Kubernetes cluster. Ensure you have access to a cluster before running these tests.
+</Note>
+
+### Building Components
+
+#### Build all images:
+
+```bash
+make image
+```
+
+This builds container images for:
+- chaos-controller-manager
+- chaos-daemon
+- chaos-dashboard
+
+#### Build specific components locally:
+
+```bash
+make local/chaos-daemon
+make local/chaos-controller-manager
+make local/chaos-dashboard
+```
+
+#### Build the UI:
+
+```bash
+UI=1 make ui
+```
+
+Or manually:
+
+```bash
+cd ui
+pnpm install --frozen-lockfile
+pnpm build
+```
+
+### Committing Changes
+
+1. **Keep your branch synced**:
+   ```bash
+   git fetch upstream
+   git rebase upstream/master
+   ```
+
+2. **Commit with sign-off** (required for DCO compliance):
+   ```bash
+   git add -A
+   git commit --signoff
+   ```
+
+3. **Push your changes**:
+   ```bash
+   git push origin new-feature
+   ```
+
+<Warning>
+All commits must be signed off using `git commit --signoff` to comply with the Developer Certificate of Origin (DCO).
+</Warning>
+
+## Code Generation
+
+Chaos Mesh uses several code generation tools. Here's what each command does:
+
+### Generate everything:
+
+```bash
+make generate
+```
+
+This runs all generation steps including CRD manifests, deepcopy files, client code, and Swagger specs.
+
+### Individual generation commands:
+
+```bash
+# Generate CRD manifests
+make config
+
+# Generate chaos types code
+make chaos-build
+
+# Generate deepcopy methods
+make generate-deepcopy
+
+# Generate Kubernetes clients
+make generate-client
+make generate-clientset
+make generate-lister
+make generate-informer
+
+# Generate protobuf code
+make proto
+
+# Generate Swagger/OpenAPI specs
+make swagger_spec
+
+# Generate combined CRD manifest
+make manifests/crd.yaml
+```
+
+## Development Environments
+
+Chaos Mesh provides containerized development environments:
+
+### Build Environment
+
+For compiling binaries with minimal build tools:
+
+```bash
+make image-build-env
+make enter-buildenv
+```
+
+### Dev Environment
+
+For development tasks (code generation, linting, testing):
+
+```bash
+make image-dev-env
+make enter-devenv
+```
+
+## Code Style
+
+### Formatting
+
+Use `goimports` with local import prefix:
+
+```bash
+make fmt
+```
+
+This runs:
+```bash
+goimports -w -l -local github.com/chaos-mesh/chaos-mesh
+```
+
+### Linting
+
+Run the `revive` linter:
+
+```bash
+make lint
+```
+
+Configuration is in `revive.toml`.
+
+### Go Modules
+
+Keep `go.mod` tidy across all submodules:
+
+```bash
+make tidy
+```
+
+This runs `go mod tidy` in:
+- Root directory
+- `api/`
+- `e2e-test/`
+- `e2e-test/cmd/e2e_helper/`
+
+### Security Scanning
+
+Run security scans with gosec:
+
+```bash
+make gosec-scan
+```
+
+## Chaos Types
+
+Chaos implementations are located in `controllers/chaosimpl/`:
+
+- `awschaos`: AWS fault injection
+- `azurechaos`: Azure fault injection
+- `blockchaos`: Block device faults
+- `dnschaos`: DNS fault injection
+- `gcpchaos`: GCP fault injection
+- `httpchaos`: HTTP fault injection
+- `iochaos`: I/O fault injection
+- `jvmchaos`: JVM fault injection
+- `kernelchaos`: Kernel fault injection
+- `networkchaos`: Network fault injection
+- `physicalmachinechaos`: Physical machine faults
+- `podchaos`: Pod lifecycle faults
+- `stresschaos`: CPU/Memory stress
+- `timechaos`: Time skew simulation
+
+Each chaos type has:
+- CRD definition in `api/v1alpha1/`
+- Controller implementation in `controllers/chaosimpl/`
+- Webhooks for validation and defaulting
+
+## Common Pitfalls
+
+<Warning>
+Avoid these common mistakes when developing Chaos Mesh:
+</Warning>
+
+1. **Forgetting to run `make check`**: Always run this before creating a PR
+2. **Not regenerating after CRD changes**: When modifying CRD structs, always run:
+   ```bash
+   make generate && make manifests/crd.yaml
+   ```
+3. **Failpoint misuse**: Enable and disable failpoints properly in tests
+4. **Multi-module complexity**: Remember to run `go mod tidy` in all directories:
+   - Root
+   - `api/`
+   - `e2e-test/`
+5. **Controller design violations**: Follow the "one controller per field" principle
+
+## Next Steps
+
+- Read the [Build System](/development/build-system) documentation
+- Understand [Controller Design Principles](/concepts/architecture)
+- Review [Contributing Guidelines](/development/contributing)
+- Check out the [Development Guide on chaos-mesh.org](https://chaos-mesh.org/docs/developer-guide-overview)
